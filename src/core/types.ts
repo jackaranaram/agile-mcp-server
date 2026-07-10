@@ -36,10 +36,52 @@ export const EpicSchema = z.object({
 
 export const AgilePlanSchema = z.object({
   version: z.string().default("1.0"),
-  epic: EpicSchema
+  epic: EpicSchema,
+  targetMilestone: z.number().optional().describe("If set, stories will be added to this existing milestone instead of creating a new one"),
 });
 
 export type AgilePlan = z.infer<typeof AgilePlanSchema>;
 export type Epic = z.infer<typeof EpicSchema>;
 export type UserStory = z.infer<typeof UserStorySchema>;
 export type TechnicalTask = z.infer<typeof TechnicalTaskSchema>;
+
+export interface GitHubMilestone {
+  number: number;
+  title: string;
+  description: string;
+  state: string;
+  html_url: string;
+}
+
+export interface GitHubLabel {
+  name: string;
+  color: string;
+}
+
+export interface GitHubIssue {
+  number: number;
+  title: string;
+  body: string;
+  labels: Array<{ name: string }>;
+  state: string;
+  html_url: string;
+  milestone?: { number: number; title: string };
+}
+
+export interface ExistingEpicInfo {
+  number: number;
+  title: string;
+  description: string;
+  state: string;
+  htmlUrl: string;
+  stories: Array<{
+    number: number;
+    title: string;
+    state: string;
+    htmlUrl: string;
+  }>;
+}
+
+export type AuthConfig =
+  | { type: 'pat'; token: string }
+  | { type: 'app'; appId: string; privateKey: string; installationId: string };

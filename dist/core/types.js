@@ -34,5 +34,6 @@ exports.EpicSchema = zod_1.z.object({
 });
 exports.AgilePlanSchema = zod_1.z.object({
     version: zod_1.z.string().default("1.0"),
-    epic: exports.EpicSchema
+    epic: exports.EpicSchema,
+    targetMilestone: zod_1.z.number().optional().describe("If set, stories will be added to this existing milestone instead of creating a new one"),
 });

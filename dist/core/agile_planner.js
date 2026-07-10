@@ -37,7 +37,7 @@ class AgilePlanner {
             const content = await fs_1.promises.readFile(planPath, 'utf-8');
             return JSON.parse(content);
         }
-        catch (error) {
+        catch {
             return null; // File doesn't exist or is unreadable
         }
     }

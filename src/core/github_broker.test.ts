@@ -301,6 +301,105 @@ describe('GitHubBroker', () => {
     });
   });
 
+  describe('initializeHarness', () => {
+    it('should return uninitialized state when repo has no milestones', async () => {
+      mockGet.mockImplementation((url: string) => {
+        if (url === '/repos/test-owner/test-repo') {
+          return Promise.resolve({ status: 200, data: {} });
+        }
+        if (url.includes('/labels')) {
+          return Promise.resolve({ data: [{ name: 'type:story', color: '2ECC71' }] });
+        }
+        if (url.includes('/milestones')) {
+          return Promise.resolve({ data: [] });
+        }
+        return Promise.reject(new Error(`Unexpected get url: ${url}`));
+      });
+
+      const result = await broker.initializeHarness();
+
+      expect(result.success).toBe(true);
+      expect(result.isInitialized).toBe(false);
+      expect(result.milestonesCount).toBe(0);
+      expect(result.labelsCreated.length).toBeGreaterThan(0);
+      expect(result.repoExists).toBe(true);
+      expect(result.authValid).toBe(true);
+    });
+
+    it('should return initialized state when repo has milestones', async () => {
+      mockGet.mockImplementation((url: string) => {
+        if (url === '/repos/test-owner/test-repo') {
+          return Promise.resolve({ status: 200, data: {} });
+        }
+        if (url.includes('/labels')) {
+          return Promise.resolve({ data: [] });
+        }
+        if (url.includes('/milestones')) {
+          return Promise.resolve({ data: [{ number: 1, title: 'Sprint 1' }] });
+        }
+        return Promise.reject(new Error(`Unexpected get url: ${url}`));
+      });
+
+      const result = await broker.initializeHarness();
+
+      expect(result.success).toBe(true);
+      expect(result.isInitialized).toBe(true);
+      expect(result.milestonesCount).toBe(1);
+      expect(result.labelsCreated.length).toBeGreaterThan(0);
+    });
+
+    it('should handle repo not found (404)', async () => {
+      mockGet.mockImplementation((url: string) => {
+        if (url === '/repos/test-owner/test-repo') {
+          return Promise.reject({ response: { status: 404, data: { message: 'Not Found' } } });
+        }
+        return Promise.reject(new Error(`Unexpected get url: ${url}`));
+      });
+
+      const result = await broker.initializeHarness();
+
+      expect(result.success).toBe(false);
+      expect(result.isInitialized).toBe(false);
+      expect(result.repoExists).toBe(false);
+    });
+
+    it('should handle auth failure (401)', async () => {
+      mockGet.mockImplementation((url: string) => {
+        if (url === '/repos/test-owner/test-repo') {
+          return Promise.reject({ response: { status: 401, data: { message: 'Bad credentials' } } });
+        }
+        return Promise.reject(new Error(`Unexpected get url: ${url}`));
+      });
+
+      const result = await broker.initializeHarness();
+
+      expect(result.success).toBe(false);
+      expect(result.authValid).toBe(false);
+    });
+
+    it('should not create labels that already exist', async () => {
+      const existingLabel = { name: 'type:story', color: '2ECC71' };
+      mockGet.mockImplementation((url: string) => {
+        if (url === '/repos/test-owner/test-repo') {
+          return Promise.resolve({ status: 200, data: {} });
+        }
+        if (url.includes('/labels')) {
+          return Promise.resolve({ data: [existingLabel] });
+        }
+        if (url.includes('/milestones')) {
+          return Promise.resolve({ data: [] });
+        }
+        return Promise.reject(new Error(`Unexpected get url: ${url}`));
+      });
+
+      const result = await broker.initializeHarness();
+
+      expect(result.success).toBe(true);
+      expect(result.labelsCreated).not.toContain('type:story');
+      expect(result.labelsCount).toBeGreaterThanOrEqual(1);
+    });
+  });
+
   describe('GitHub App Authentication', () => {
     // Integration-level testing is needed to verify the full App auth flow
     // (JWT generation, installation token fetch, auto-refresh).

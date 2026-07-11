@@ -1,7 +1,20 @@
 import axios, { AxiosError, AxiosInstance } from 'axios';
 import axiosRetry from 'axios-retry';
 import jwt from 'jsonwebtoken';
-import { AgilePlan, UserStory, TechnicalTask, AuthConfig, ExistingEpicInfo, GitHubMilestone, GitHubIssue } from './types';
+import { AgilePlan, UserStory, TechnicalTask, AuthConfig, ExistingEpicInfo, GitHubMilestone, GitHubIssue, InitHarnessResult } from './types';
+
+const STANDARD_LABELS: Array<{ name: string; color: string }> = [
+  { name: 'type:epic', color: '3498DB' },
+  { name: 'type:story', color: '2ECC71' },
+  { name: 'type:task', color: '9B59B6' },
+  { name: 'priority:LOW', color: 'D4E6F1' },
+  { name: 'priority:MEDIUM', color: 'FADBD8' },
+  { name: 'priority:HIGH', color: 'F5B041' },
+  { name: 'priority:CRITICAL', color: 'EC7063' },
+  { name: 'risk:LOW', color: 'A9DFBF' },
+  { name: 'risk:MEDIUM', color: 'F9E79F' },
+  { name: 'risk:HIGH', color: 'F1948A' },
+];
 
 export interface ApplyPlanResult {
   success: boolean;
@@ -389,21 +402,79 @@ export class GitHubBroker {
     }
   }
 
+  public async initializeHarness(): Promise<InitHarnessResult> {
+    try {
+      await this.client.get(`/repos/${this.owner}/${this.repo}`);
+
+      const existingLabels = await this.getExistingLabels();
+      const existingNames = new Set(existingLabels.map(l => l.name));
+
+      const labelsCreated: string[] = [];
+      for (const label of STANDARD_LABELS) {
+        if (!existingNames.has(label.name)) {
+          try {
+            await this.ensureLabelExists(label.name, label.color);
+            labelsCreated.push(label.name);
+          } catch {
+            // non-422 error, skip
+          }
+        }
+      }
+
+      const milestones = await this.getExistingMilestones('open');
+      const isInitialized = milestones.length > 0;
+      const totalLabels = existingLabels.length + labelsCreated.length;
+
+      return {
+        success: true,
+        message: isInitialized
+          ? `Agile Harness is active. Found ${milestones.length} milestone(s) and ${totalLabels} labels.${labelsCreated.length ? ` Created ${labelsCreated.length} new label(s).` : ''}`
+          : `Repository initialized. Verified ${totalLabels} labels${labelsCreated.length ? ` (${labelsCreated.length} new)` : ''}. No milestones found. Create your first epic with stage_agile_plan + apply_agile_plan.`,
+        isInitialized,
+        milestonesCount: milestones.length,
+        labelsCount: totalLabels,
+        labelsCreated,
+        repoExists: true,
+        authValid: true,
+      };
+    } catch (error) {
+      const apiErr = error as import('axios').AxiosError;
+      let message = 'Failed to initialize Agile Harness.';
+      let authValid = false;
+      let repoExists = false;
+
+      if (apiErr.response) {
+        if (apiErr.response.status === 401 || apiErr.response.status === 403) {
+          message = 'Authentication failed. Check your GitHub token or App credentials.';
+          authValid = false;
+        } else if (apiErr.response.status === 404) {
+          message = `Repository '${this.owner}/${this.repo}' not found. Check the repository name and access permissions.`;
+          repoExists = false;
+          authValid = true;
+        } else {
+          message = `GitHub API Error (${apiErr.response.status}): ${JSON.stringify(apiErr.response.data)}`;
+        }
+      } else if (apiErr.code === 'ECONNREFUSED' || apiErr.code === 'ENOTFOUND') {
+        message = 'Network error: Could not connect to GitHub API.';
+      }
+
+      return {
+        success: false,
+        message,
+        isInitialized: false,
+        milestonesCount: 0,
+        labelsCount: 0,
+        labelsCreated: [],
+        repoExists,
+        authValid,
+      };
+    }
+  }
+
   private collectRequiredLabels(plan: AgilePlan): Array<{ name: string; color: string }> {
     const labelMap = new Map<string, string>();
 
-    labelMap.set('type:epic', '3498DB');
-    labelMap.set('type:story', '2ECC71');
-    labelMap.set('type:task', '9B59B6');
-
-    labelMap.set('priority:LOW', 'D4E6F1');
-    labelMap.set('priority:MEDIUM', 'FADBD8');
-    labelMap.set('priority:HIGH', 'F5B041');
-    labelMap.set('priority:CRITICAL', 'EC7063');
-
-    labelMap.set('risk:LOW', 'A9DFBF');
-    labelMap.set('risk:MEDIUM', 'F9E79F');
-    labelMap.set('risk:HIGH', 'F1948A');
+    STANDARD_LABELS.forEach(l => labelMap.set(l.name, l.color));
 
     const collectTags = (tags: string[]) => {
       tags.forEach(tag => {

@@ -85,3 +85,14 @@ export interface ExistingEpicInfo {
 export type AuthConfig =
   | { type: 'pat'; token: string }
   | { type: 'app'; appId: string; privateKey: string; installationId: string };
+
+export interface InitHarnessResult {
+  success: boolean;
+  message: string;
+  isInitialized: boolean;
+  milestonesCount: number;
+  labelsCount: number;
+  labelsCreated: string[];
+  repoExists: boolean;
+  authValid: boolean;
+}

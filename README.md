@@ -1,17 +1,21 @@
-# Agile Agent Harness (MCP Server)
+# Agile MCP Server
 
-Este es un servidor compatible con el **Model Context Protocol (MCP)** diseñado para automatizar la gestión ágil de proyectos en GitHub. Permite a agentes de IA (como Antigravity, Cursor o Claude Desktop) traducir especificaciones escritas en lenguaje natural en estructuras de gestión de proyectos validadas y subirlas a GitHub.
+Servidor MCP que convierte especificaciones en lenguaje natural en estructuras ágiles de project management (epics, stories, tareas) y las sincroniza con **GitHub** (con soporte para **Jira** y **Azure DevOps** en camino).
 
 ---
 
-## 🛠️ Configuración e Instalación
+## 🛠️ Instalación
 
-### 1. Requisitos Previos
+### Requisitos Previos
 * **Node.js** (v18 o superior)
-* Un **GitHub Personal Access Token (PAT)** con permisos de escritura en el repositorio (permisos `repo` o al menos `issues:write` y `metadata:read`).
+* Un **GitHub Personal Access Token (PAT)** con permisos `repo` (o `issues:write` + `metadata:read`).
 
-### 2. Instalación y Compilación
-Clona o abre el directorio del proyecto y ejecuta:
+### Uso rápido (via npx)
+```bash
+npx -y @jackaranaram/agile-mcp-server
+```
+
+### Instalación local
 ```bash
 npm install
 npm run build
@@ -19,35 +23,56 @@ npm run build
 
 ---
 
-## ⚙️ Registro del Servidor MCP
+## ⚙️ Autenticación
 
-Para que tus editores o clientes de IA puedan ver y usar las herramientas, debes registrar este servidor en sus archivos de configuración de MCP.
+Soporta dos métodos de autenticación con GitHub:
 
-### Opción A: Configuración en Cursor o VS Code (Antigravity)
-Agrega un nuevo servidor MCP de tipo **command**:
-* **Name:** `agile-agent-harness`
-* **Type:** `command`
-* **Command:** `node c:/Projects/harness/dist/index.js`
-* **Variables de Entorno (Opcional):**
-  * `GITHUB_TOKEN`: Tu token de GitHub.
-  * `GITHUB_REPOSITORY`: El repositorio objetivo en formato `owner/repo`.
-
-### Opción B: Claude Desktop (`claude_desktop_config.json`)
-Agrega la configuración al archivo en `%APPDATA%\Claude\claude_desktop_config.json`:
+### PAT (Personal Access Token)
 ```json
 {
   "mcpServers": {
-    "agile-agent-harness": {
-      "command": "node",
-      "args": ["c:/Projects/harness/dist/index.js"],
+    "agile-mcp-server": {
+      "command": "npx",
+      "args": ["-y", "@jackaranaram/agile-mcp-server"],
       "env": {
-        "GITHUB_TOKEN": "tu_token_aqui",
+        "GITHUB_TOKEN": "github_pat_...",
         "GITHUB_REPOSITORY": "owner/repo"
       }
     }
   }
 }
 ```
+
+### GitHub App (recomendado para organizaciones)
+```json
+{
+  "mcpServers": {
+    "agile-mcp-server": {
+      "command": "npx",
+      "args": ["-y", "@jackaranaram/agile-mcp-server"],
+      "env": {
+        "GITHUB_APP_ID": "123456",
+        "GITHUB_APP_PRIVATE_KEY": "-----BEGIN RSA PRIVATE KEY-----\nMIIEpA...\n-----END RSA PRIVATE KEY-----",
+        "GITHUB_APP_INSTALLATION_ID": "789012",
+        "GITHUB_REPOSITORY": "owner/repo"
+      }
+    }
+  }
+}
+```
+> La private key PEM debe escaparse con `\n` para cada salto de línea en JSON.
+
+> En Windows, agrega `"command": "cmd"` y `"args": ["/c", "npx", "-y", "@jackaranaram/agile-mcp-server"]`.
+
+### Claude Code
+```bash
+# PAT
+claude mcp add agile-mcp-server -- npx -y @jackaranaram/agile-mcp-server
+
+# GitHub App
+claude mcp add agile-mcp-server -- npx -y @jackaranaram/agile-mcp-server
+```
+Las variables de entorno se configuran en la UI de Claude Code.
 
 ---
 

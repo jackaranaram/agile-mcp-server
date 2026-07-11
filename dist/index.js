@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const index_js_1 = require("@modelcontextprotocol/sdk/server/index.js");
@@ -10,7 +11,7 @@ class AgileHarnessServer {
     planner;
     constructor() {
         this.server = new index_js_1.Server({
-            name: "agile-agent-harness",
+            name: "@jackaranaram/agile-mcp-server",
             version: "1.0.0",
         }, {
             capabilities: {
@@ -86,6 +87,35 @@ class AgileHarnessServer {
                             idempotent: {
                                 type: "boolean",
                                 description: "If true, checks if items already exist before creating them, reusing any existing matches. Defaults to false."
+                            }
+                        }
+                    }
+                },
+                {
+                    name: "init_agile_harness",
+                    description: "Verifies GitHub connectivity, ensures standard labels exist, and reports the initialization state of the Agile Harness for a repository.",
+                    inputSchema: {
+                        type: "object",
+                        properties: {
+                            githubToken: {
+                                type: "string",
+                                description: "GitHub Personal Access Token (defaults to GITHUB_TOKEN env var)"
+                            },
+                            githubAppId: {
+                                type: "string",
+                                description: "GitHub App ID (defaults to GITHUB_APP_ID env var)"
+                            },
+                            githubAppPrivateKey: {
+                                type: "string",
+                                description: "GitHub App private key (defaults to GITHUB_APP_PRIVATE_KEY env var)"
+                            },
+                            githubAppInstallationId: {
+                                type: "string",
+                                description: "GitHub App installation ID (defaults to GITHUB_APP_INSTALLATION_ID env var)"
+                            },
+                            repository: {
+                                type: "string",
+                                description: "Target repository in 'owner/repo' format (defaults to GITHUB_REPOSITORY env var)"
                             }
                         }
                     }
@@ -193,6 +223,30 @@ class AgileHarnessServer {
                     };
                 }
             }
+            if (request.params.name === "init_agile_harness") {
+                try {
+                    const auth = this.resolveAuth(request.params.arguments);
+                    const repository = this.resolveRepository(request.params.arguments);
+                    if (!repository) {
+                        return {
+                            content: [{ type: "text", text: "Error: Repository is missing. Provide it via 'repository' argument or GITHUB_REPOSITORY environment variable." }],
+                            isError: true,
+                        };
+                    }
+                    const broker = new github_broker_js_1.GitHubBroker(auth, repository);
+                    const result = await broker.initializeHarness();
+                    return {
+                        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+                    };
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    return {
+                        content: [{ type: "text", text: `Error: ${message}` }],
+                        isError: true,
+                    };
+                }
+            }
             if (request.params.name === "fetch_existing_epics") {
                 try {
                     const auth = this.resolveAuth(request.params.arguments);
@@ -223,7 +277,7 @@ class AgileHarnessServer {
     async run() {
         const transport = new stdio_js_1.StdioServerTransport();
         await this.server.connect(transport);
-        console.error("Agile Agent Harness MCP server running on stdio");
+        console.error("@jackaranaram/agile-mcp-server running on stdio");
     }
 }
 const server = new AgileHarnessServer();

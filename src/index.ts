@@ -252,6 +252,10 @@ class AgileHarnessServer {
                                 type: "boolean",
                                 description: "If true, creates project in an organization. If false, creates user project. Defaults to false."
                             },
+                            initializeCustomStatus: {
+                                type: "boolean",
+                                description: "If true, automatically creates a custom single-select field 'Status' with 5 states (Backlog, Todo, In Progress, In Review, Done). Defaults to true."
+                            },
                             githubToken: {
                                 type: "string",
                                 description: "GitHub Personal Access Token (defaults to GITHUB_TOKEN env var)"
@@ -272,6 +276,59 @@ class AgileHarnessServer {
                         required: ["title"]
                     }
                 } as Tool,
+                {
+                    name: "create_project_field",
+                    description: "Creates a custom single-select field with defined options in a GitHub Project V2.",
+                    inputSchema: {
+                        type: "object",
+                        properties: {
+                            projectId: {
+                                type: "string",
+                                description: "Node ID of the GitHub Project V2"
+                            },
+                            fieldName: {
+                                type: "string",
+                                description: "Name of the custom field"
+                            },
+                            options: {
+                                type: "array",
+                                description: "Array of single-select options with name and color",
+                                items: {
+                                    type: "object",
+                                    properties: {
+                                        name: {
+                                            type: "string",
+                                            description: "Name of the option"
+                                        },
+                                        color: {
+                                            type: "string",
+                                            description: "Color of the option (GRAY, BLUE, GREEN, YELLOW, ORANGE, RED, PINK, PURPLE)"
+                                        }
+                                    },
+                                    required: ["name", "color"]
+                                }
+                            },
+                            githubToken: {
+                                type: "string",
+                                description: "GitHub Personal Access Token (defaults to GITHUB_TOKEN env var)"
+                            },
+                            githubAppId: {
+                                type: "string",
+                                description: "GitHub App ID (defaults to GITHUB_APP_ID env var)"
+                            },
+                            githubAppPrivateKey: {
+                                type: "string",
+                                description: "GitHub App private key (defaults to GITHUB_APP_PRIVATE_KEY env var)"
+                            },
+                            githubAppInstallationId: {
+                                type: "string",
+                                description: "GitHub App installation ID (defaults to GITHUB_APP_INSTALLATION_ID env var)"
+                            }
+                        },
+                        required: ["projectId", "fieldName", "options"]
+                    }
+                } as Tool,
+
                 {
                     name: "get_project_fields",
                     description: "Gets the custom fields (columns) available in a GitHub Project V2, including their IDs, types, and option values.",
@@ -589,6 +646,7 @@ class AgileHarnessServer {
                     const ownerLogin = (request.params.arguments?.ownerLogin as string) || this.detectGitOwnerLogin() || '';
                     const title = request.params.arguments?.title as string;
                     const isOrg = request.params.arguments?.isOrg === true;
+                    const initializeCustomStatus = request.params.arguments?.initializeCustomStatus !== false;
 
                     if (!ownerLogin || !title) {
                         return {
@@ -616,8 +674,56 @@ class AgileHarnessServer {
 
                     const project = await broker.createProject(owner.id, title);
 
+                    let customFieldMsg = "";
+                    if (initializeCustomStatus) {
+                        try {
+                            const defaultStates = [
+                                { name: "Backlog", color: "GRAY" },
+                                { name: "Todo", color: "BLUE" },
+                                { name: "In Progress", color: "YELLOW" },
+                                { name: "In Review", color: "ORANGE" },
+                                { name: "Done", color: "GREEN" },
+                            ];
+                            await broker.createCustomSingleSelectField(project.id, "Status", defaultStates);
+                            customFieldMsg = "\n* Custom single-select field 'Status' initialized with 5 states (Backlog, Todo, In Progress, In Review, Done).";
+                        } catch (err) {
+                            customFieldMsg = `\n* Warning: Failed to create custom 'Status' field: ${err instanceof Error ? err.message : String(err)}`;
+                        }
+                    }
+
                     return {
-                        content: [{ type: "text", text: `Project created successfully!\n\n* **${project.title}** (#${project.number}) — ID: \`${project.id}\`\n* URL: \`${project.url || `https://github.com/users/${ownerLogin}/projects/${project.number}`}\`` }],
+                        content: [{ type: "text", text: `Project created successfully!\n\n* **${project.title}** (#${project.number}) — ID: \`${project.id}\`\n* URL: \`${project.url || `https://github.com/users/${ownerLogin}/projects/${project.number}`}\`${customFieldMsg}` }],
+                    };
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    return {
+                        content: [{ type: "text", text: `Error: ${message}` }],
+                        isError: true,
+                    };
+                }
+            }
+
+            if (request.params.name === "create_project_field") {
+                try {
+                    const auth = this.resolveAuth(request.params.arguments as Record<string, unknown> | undefined);
+                    const projectId = request.params.arguments?.projectId as string;
+                    const fieldName = request.params.arguments?.fieldName as string;
+                    const options = request.params.arguments?.options as Array<{ name: string; color: string }>;
+
+                    if (!projectId || !fieldName || !options) {
+                        return {
+                            content: [{ type: "text", text: "Error: 'projectId', 'fieldName', and 'options' are required." }],
+                            isError: true,
+                        };
+                    }
+
+                    const broker = new GitHubProjectsBroker(auth, projectId);
+                    const field = await broker.createCustomSingleSelectField(projectId, fieldName, options);
+
+                    const optionsText = field.options.map((o) => `${o.name} (ID: \`${o.id}\`, color: ${o.color})`).join(', ');
+
+                    return {
+                        content: [{ type: "text", text: `Custom single-select field '${field.name}' created successfully!\n\n* **Field ID:** \`${field.id}\`\n* **Options:** ${optionsText}` }],
                     };
                 } catch (error) {
                     const message = error instanceof Error ? error.message : String(error);

@@ -13,6 +13,7 @@ import {
   GET_NODE_ID,
   GET_USER_ID,
   GET_ORG_ID,
+  CREATE_PROJECT_FIELD,
 } from './graphql_queries';
 import {
   AuthConfig,
@@ -22,6 +23,7 @@ import {
   ProjectInfo,
   ProjectField,
   ProjectItem,
+  CustomSingleSelectOption,
 } from './types';
 
 interface ListProjectsResponse {
@@ -93,6 +95,17 @@ interface UpdateFieldResponse {
 interface GetNodeIdResponse {
   repository: { id: string } | null;
 }
+
+interface CreateProjectFieldResponse {
+  createProjectV2Field: {
+    projectV2Field: {
+      id: string;
+      name: string;
+      options: Array<{ id: string; name: string; color: string }>;
+    };
+  };
+}
+
 
 const FIELD_NAME_MAP: Record<string, string> = {
   priority: 'Priority',
@@ -250,6 +263,35 @@ export class GitHubProjectsBroker {
     });
     return data.createProjectV2.projectV2;
   }
+
+  async createCustomSingleSelectField(
+    projectId: string,
+    fieldName: string,
+    options: CustomSingleSelectOption[],
+  ): Promise<{ id: string; name: string; options: Array<{ id: string; name: string; color: string }> }> {
+    const formattedOptions = options.map((opt) => {
+      let color = opt.color.toUpperCase();
+      const validColors = ['GRAY', 'BLUE', 'GREEN', 'YELLOW', 'ORANGE', 'RED', 'PINK', 'PURPLE'];
+      if (!validColors.includes(color)) {
+        color = 'GRAY';
+      }
+      return {
+        name: opt.name,
+        color,
+      };
+    });
+
+    const data = await this.graphql.query<CreateProjectFieldResponse>(CREATE_PROJECT_FIELD, {
+      variables: {
+        projectId,
+        name: fieldName,
+        options: formattedOptions,
+      },
+    });
+
+    return data.createProjectV2Field.projectV2Field;
+  }
+
 
   async applyPlanToProject(
     plan: AgilePlan,

@@ -284,6 +284,52 @@ describe('GitHubProjectsBroker', () => {
     });
   });
 
+  describe('createCustomSingleSelectField', () => {
+    it('creates a custom single select field and normalizes colors', async () => {
+      const mockField = {
+        id: 'new-field-id',
+        name: 'Custom Status',
+        options: [
+          { id: 'opt-1', name: 'Backlog', color: 'GRAY' },
+          { id: 'opt-2', name: 'Todo', color: 'BLUE' },
+        ],
+      };
+
+      MockedGraphQLClient.prototype.query.mockResolvedValueOnce({
+        createProjectV2Field: {
+          projectV2Field: mockField,
+        },
+      });
+
+      const options = [
+        { name: 'Backlog', color: 'gray' },
+        { name: 'Todo', color: 'invalid-color' },
+      ];
+
+      const result = await broker.createCustomSingleSelectField(
+        'project-123',
+        'Custom Status',
+        options,
+      );
+
+      expect(result).toEqual(mockField);
+      expect(MockedGraphQLClient.prototype.query).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          variables: {
+            projectId: 'project-123',
+            name: 'Custom Status',
+            options: [
+              { name: 'Backlog', color: 'GRAY' },
+              { name: 'Todo', color: 'GRAY' },
+            ],
+          },
+        }),
+      );
+    });
+  });
+
+
   describe('applyPlanToProject', () => {
     describe('dry run', () => {
       it('generates report without creating items', async () => {

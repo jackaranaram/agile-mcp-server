@@ -288,3 +288,27 @@ export const GET_ORG_ID = `
     }
   }
 `;
+
+export const CREATE_PROJECT_FIELD = `
+  mutation CreateProjectField($projectId: ID!, $name: String!, $options: [ProjectV2SingleSelectFieldOptionInput!]) {
+    createProjectV2Field(input: {
+      projectId: $projectId,
+      name: $name,
+      dataType: SINGLE_SELECT,
+      singleSelectOptions: $options
+    }) {
+      projectV2Field {
+        ... on ProjectV2SingleSelectField {
+          id
+          name
+          options {
+            id
+            name
+            color
+          }
+        }
+      }
+    }
+  }
+`;
+

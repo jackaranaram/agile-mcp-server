@@ -121,6 +121,12 @@ export interface ProjectFieldOption {
   name: string;
 }
 
+export interface CustomSingleSelectOption {
+  name: string;
+  color: string;
+}
+
+
 export interface ProjectField {
   id: string;
   name: string;

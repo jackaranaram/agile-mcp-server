@@ -23,7 +23,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/jackaranaram/agile-agent-harness.git"
+    "url": "git+https://github.com/jackaranaram/agile-mcp-server.git"
   },
   "keywords": [
     "mcp",

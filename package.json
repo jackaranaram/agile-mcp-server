@@ -1,6 +1,6 @@
 {
   "name": "@jackaranaram/agile-mcp-server",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "packageManager": "pnpm@9.15.0",
   "description": "Agile Project Management MCP server — plan epics, stories and tasks, then sync to GitHub (Jira, Azure DevOps coming soon)",
   "main": "dist/index.js",

@@ -20,10 +20,11 @@ export interface ApplyPlanResult {
   success: boolean;
   message: string;
   milestoneUrl?: string;
-  createdStories?: Array<{ id: string; number: number; url: string }>;
-  createdTasks?: Array<{ id: string; number: number; url: string }>;
-  reusedStories?: Array<{ id: string; number: number; url: string }>;
-  reusedTasks?: Array<{ id: string; number: number; url: string }>;
+  milestoneNumber?: number;
+  createdStories?: Array<{ id: string; number: number; url: string; nodeId?: string }>;
+  createdTasks?: Array<{ id: string; number: number; url: string; nodeId?: string }>;
+  reusedStories?: Array<{ id: string; number: number; url: string; nodeId?: string }>;
+  reusedTasks?: Array<{ id: string; number: number; url: string; nodeId?: string }>;
   report?: string;
   error?: string;
 }
@@ -191,10 +192,10 @@ export class GitHubBroker {
     return found ? { number: found.number, url: found.html_url } : null;
   }
 
-  private async findIssueByTitle(title: string, milestoneNumber: number): Promise<{ number: number; url: string } | null> {
+  private async findIssueByTitle(title: string, milestoneNumber: number): Promise<{ number: number; url: string; nodeId?: string } | null> {
     const issues = await this.getExistingIssuesByMilestone(milestoneNumber);
     const found = issues.find(i => i.title === title);
-    return found ? { number: found.number, url: found.html_url } : null;
+    return found ? { number: found.number, url: found.html_url, nodeId: found.node_id } : null;
   }
 
   private generateDryRunReport(plan: AgilePlan): ApplyPlanResult {
@@ -273,10 +274,10 @@ export class GitHubBroker {
         }
       }
 
-      const createdStories: Array<{ id: string; number: number; url: string; rawBody: string }> = [];
-      const reusedStories: Array<{ id: string; number: number; url: string }> = [];
-      const createdTasks: Array<{ id: string; number: number; url: string }> = [];
-      const reusedTasks: Array<{ id: string; number: number; url: string }> = [];
+      const createdStories: Array<{ id: string; number: number; url: string; nodeId?: string; rawBody: string }> = [];
+      const reusedStories: Array<{ id: string; number: number; url: string; nodeId?: string }> = [];
+      const createdTasks: Array<{ id: string; number: number; url: string; nodeId?: string }> = [];
+      const reusedTasks: Array<{ id: string; number: number; url: string; nodeId?: string }> = [];
       const taskToNumberMap: Record<string, number> = {};
 
       for (const story of plan.epic.stories) {
@@ -292,21 +293,21 @@ export class GitHubBroker {
         if (idempotent) {
           const existing = await this.findIssueByTitle(storyTitle, milestoneNumber);
           if (existing) {
-            reusedStories.push({ id: story.id, number: existing.number, url: existing.url });
-            createdStories.push({ id: story.id, number: existing.number, url: existing.url, rawBody: '' });
+            reusedStories.push({ id: story.id, number: existing.number, url: existing.url, nodeId: existing.nodeId });
+            createdStories.push({ id: story.id, number: existing.number, url: existing.url, nodeId: existing.nodeId, rawBody: '' });
             continue;
           }
         }
 
         const initialBody = this.buildStoryBody(story);
-        const { number, url } = await this.createIssue(
+        const { number, url, nodeId } = await this.createIssue(
           storyTitle,
           initialBody,
           milestoneNumber,
           storyLabels
         );
 
-        createdStories.push({ id: story.id, number, url, rawBody: initialBody });
+        createdStories.push({ id: story.id, number, url, nodeId, rawBody: initialBody });
       }
 
       for (const story of plan.epic.stories) {
@@ -325,21 +326,21 @@ export class GitHubBroker {
           if (idempotent) {
             const existing = await this.findIssueByTitle(taskTitle, milestoneNumber);
             if (existing) {
-              reusedTasks.push({ id: task.id, number: existing.number, url: existing.url });
+              reusedTasks.push({ id: task.id, number: existing.number, url: existing.url, nodeId: existing.nodeId });
               taskToNumberMap[task.id] = existing.number;
               continue;
             }
           }
 
           const taskBody = this.buildTaskBody(task, story.id, parentStoryMeta.url);
-          const { number, url } = await this.createIssue(
+          const { number, url, nodeId } = await this.createIssue(
             taskTitle,
             taskBody,
             milestoneNumber,
             taskLabels
           );
 
-          createdTasks.push({ id: task.id, number, url });
+          createdTasks.push({ id: task.id, number, url, nodeId });
           taskToNumberMap[task.id] = number;
         }
       }
@@ -381,9 +382,10 @@ export class GitHubBroker {
         success: true,
         message: parts.join(' '),
         milestoneUrl,
+        milestoneNumber,
         createdStories: createdStories
           .filter(s => !reusedStories.find(r => r.id === s.id))
-          .map(({ id, number, url }) => ({ id, number, url })),
+          .map(({ id, number, url, nodeId }) => ({ id, number, url, nodeId })),
         createdTasks: createdTasks.filter(t => !reusedTasks.find(r => r.id === t.id)),
         reusedStories: reusedStories.length > 0 ? reusedStories : undefined,
         reusedTasks: reusedTasks.length > 0 ? reusedTasks : undefined,
@@ -523,7 +525,7 @@ export class GitHubBroker {
     body: string,
     milestoneNumber: number,
     labels: string[]
-  ): Promise<{ number: number; url: string }> {
+  ): Promise<{ number: number; url: string; nodeId?: string }> {
     const response = await this.client.post(`/repos/${this.owner}/${this.repo}/issues`, {
       title,
       body,
@@ -533,6 +535,7 @@ export class GitHubBroker {
     return {
       number: response.data.number as number,
       url: response.data.html_url as string,
+      nodeId: response.data.node_id as string | undefined,
     };
   }
 

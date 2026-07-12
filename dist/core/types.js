@@ -36,4 +36,9 @@ exports.AgilePlanSchema = zod_1.z.object({
     version: zod_1.z.string().default("1.0"),
     epic: exports.EpicSchema,
     targetMilestone: zod_1.z.number().optional().describe("If set, stories will be added to this existing milestone instead of creating a new one"),
+    targetProject: zod_1.z.string().optional().describe("Node ID of an existing GitHub Project V2 to sync items into"),
+    projectOptions: zod_1.z.object({
+        createAsDraftIssues: zod_1.z.boolean().default(true).describe("If true, creates draft issues directly in the project. If false, adds existing issues by node ID."),
+        linkToMilestones: zod_1.z.boolean().default(false).describe("If true, also creates milestones and issues (same as without targetProject) in addition to project items"),
+    }).optional(),
 });

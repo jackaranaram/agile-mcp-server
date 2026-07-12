@@ -157,7 +157,7 @@ class GitHubBroker {
     async findIssueByTitle(title, milestoneNumber) {
         const issues = await this.getExistingIssuesByMilestone(milestoneNumber);
         const found = issues.find(i => i.title === title);
-        return found ? { number: found.number, url: found.html_url } : null;
+        return found ? { number: found.number, url: found.html_url, nodeId: found.node_id } : null;
     }
     generateDryRunReport(plan) {
         const epic = plan.epic;
@@ -246,14 +246,14 @@ class GitHubBroker {
                 if (idempotent) {
                     const existing = await this.findIssueByTitle(storyTitle, milestoneNumber);
                     if (existing) {
-                        reusedStories.push({ id: story.id, number: existing.number, url: existing.url });
-                        createdStories.push({ id: story.id, number: existing.number, url: existing.url, rawBody: '' });
+                        reusedStories.push({ id: story.id, number: existing.number, url: existing.url, nodeId: existing.nodeId });
+                        createdStories.push({ id: story.id, number: existing.number, url: existing.url, nodeId: existing.nodeId, rawBody: '' });
                         continue;
                     }
                 }
                 const initialBody = this.buildStoryBody(story);
-                const { number, url } = await this.createIssue(storyTitle, initialBody, milestoneNumber, storyLabels);
-                createdStories.push({ id: story.id, number, url, rawBody: initialBody });
+                const { number, url, nodeId } = await this.createIssue(storyTitle, initialBody, milestoneNumber, storyLabels);
+                createdStories.push({ id: story.id, number, url, nodeId, rawBody: initialBody });
             }
             for (const story of plan.epic.stories) {
                 const parentStoryMeta = createdStories.find(s => s.id === story.id);
@@ -269,14 +269,14 @@ class GitHubBroker {
                     if (idempotent) {
                         const existing = await this.findIssueByTitle(taskTitle, milestoneNumber);
                         if (existing) {
-                            reusedTasks.push({ id: task.id, number: existing.number, url: existing.url });
+                            reusedTasks.push({ id: task.id, number: existing.number, url: existing.url, nodeId: existing.nodeId });
                             taskToNumberMap[task.id] = existing.number;
                             continue;
                         }
                     }
                     const taskBody = this.buildTaskBody(task, story.id, parentStoryMeta.url);
-                    const { number, url } = await this.createIssue(taskTitle, taskBody, milestoneNumber, taskLabels);
-                    createdTasks.push({ id: task.id, number, url });
+                    const { number, url, nodeId } = await this.createIssue(taskTitle, taskBody, milestoneNumber, taskLabels);
+                    createdTasks.push({ id: task.id, number, url, nodeId });
                     taskToNumberMap[task.id] = number;
                 }
             }
@@ -315,9 +315,10 @@ class GitHubBroker {
                 success: true,
                 message: parts.join(' '),
                 milestoneUrl,
+                milestoneNumber,
                 createdStories: createdStories
                     .filter(s => !reusedStories.find(r => r.id === s.id))
-                    .map(({ id, number, url }) => ({ id, number, url })),
+                    .map(({ id, number, url, nodeId }) => ({ id, number, url, nodeId })),
                 createdTasks: createdTasks.filter(t => !reusedTasks.find(r => r.id === t.id)),
                 reusedStories: reusedStories.length > 0 ? reusedStories : undefined,
                 reusedTasks: reusedTasks.length > 0 ? reusedTasks : undefined,
@@ -453,6 +454,7 @@ class GitHubBroker {
         return {
             number: response.data.number,
             url: response.data.html_url,
+            nodeId: response.data.node_id,
         };
     }
     async updateIssueBody(issueNumber, body) {

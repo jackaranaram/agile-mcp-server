@@ -38,6 +38,11 @@ export const AgilePlanSchema = z.object({
   version: z.string().default("1.0"),
   epic: EpicSchema,
   targetMilestone: z.number().optional().describe("If set, stories will be added to this existing milestone instead of creating a new one"),
+  targetProject: z.string().optional().describe("Node ID of an existing GitHub Project V2 to sync items into"),
+  projectOptions: z.object({
+    createAsDraftIssues: z.boolean().default(true).describe("If true, creates draft issues directly in the project. If false, adds existing issues by node ID."),
+    linkToMilestones: z.boolean().default(false).describe("If true, also creates milestones and issues (same as without targetProject) in addition to project items"),
+  }).optional(),
 });
 
 export type AgilePlan = z.infer<typeof AgilePlanSchema>;
@@ -65,6 +70,7 @@ export interface GitHubIssue {
   labels: Array<{ name: string }>;
   state: string;
   html_url: string;
+  node_id?: string;
   milestone?: { number: number; title: string };
 }
 
@@ -95,4 +101,60 @@ export interface InitHarnessResult {
   labelsCreated: string[];
   repoExists: boolean;
   authValid: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// GitHub Projects V2 Types
+// ---------------------------------------------------------------------------
+
+export interface ProjectInfo {
+  id: string;
+  title: string;
+  number: number;
+  shortDescription?: string;
+  closed: boolean;
+  url?: string;
+}
+
+export interface ProjectFieldOption {
+  id: string;
+  name: string;
+}
+
+export interface ProjectField {
+  id: string;
+  name: string;
+  dataType: string;
+  options?: ProjectFieldOption[];
+}
+
+export interface ProjectItemContent {
+  id: string;
+  title: string;
+  number?: number;
+  url?: string;
+}
+
+export interface ProjectItem {
+  id: string;
+  type: 'ISSUE' | 'PULL_REQUEST' | 'DRAFT_ISSUE';
+  content: ProjectItemContent | null;
+  fieldValues: Record<string, string | number>;
+}
+
+export interface ApplyToProjectOptions {
+  createAsDraftIssues: boolean;
+  linkToMilestones: boolean;
+  dryRun: boolean;
+  idempotent: boolean;
+}
+
+export interface ApplyToProjectResult {
+  success: boolean;
+  message: string;
+  projectUrl?: string;
+  createdItems: Array<{ id: string; title: string }>;
+  reusedItems: Array<{ id: string; title: string }>;
+  report?: string;
+  error?: string;
 }

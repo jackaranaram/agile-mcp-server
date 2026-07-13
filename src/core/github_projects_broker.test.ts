@@ -28,7 +28,7 @@ function makePlan(overrides?: Partial<AgilePlan>): AgilePlan {
           tags: [],
           tasks: [
             {
-              id: 'TSK-1',
+              id: 'TS-1',
               title: 'Implement test',
               description: 'Write the test code',
               target_files: ['test.ts'],
@@ -88,7 +88,7 @@ let broker: GitHubProjectsBroker;
 
 beforeEach(() => {
   jest.clearAllMocks();
-  MockedGraphQLClient.prototype.query.mockImplementation(async () => ({}));
+  MockedGraphQLClient.prototype.query.mockResolvedValue({});
   broker = new GitHubProjectsBroker(
     { type: 'pat', token: 'ghp_test' },
     'project-node-id-123',
@@ -221,17 +221,6 @@ describe('GitHubProjectsBroker', () => {
     });
   });
 
-  describe('createDraftIssue', () => {
-    it('creates a draft issue and returns item ID', async () => {
-      MockedGraphQLClient.prototype.query.mockResolvedValueOnce({
-        addProjectV2DraftIssue: { projectItem: { id: 'new-item-id' } },
-      });
-
-      const result = await broker.createDraftIssue('Test Title', 'Test body');
-      expect(result).toBe('new-item-id');
-    });
-  });
-
   describe('addIssueToProject', () => {
     it('adds existing issue to project and returns item ID', async () => {
       MockedGraphQLClient.prototype.query.mockResolvedValueOnce({
@@ -289,7 +278,6 @@ describe('GitHubProjectsBroker', () => {
       it('generates report without creating items', async () => {
         const plan = makePlan();
         const result = await broker.applyPlanToProject(plan, {
-          createAsDraftIssues: true,
           linkToMilestones: false,
           dryRun: true,
           idempotent: false,
@@ -298,13 +286,13 @@ describe('GitHubProjectsBroker', () => {
         expect(result.success).toBe(true);
         expect(result.createdItems).toHaveLength(0);
         expect(result.report).toContain('STORY-1');
-        expect(result.report).toContain('TSK-1');
+        expect(result.report).toContain('TS-1');
         expect(MockedGraphQLClient.prototype.query).not.toHaveBeenCalled();
       });
     });
 
-    describe('execute with draft issues', () => {
-      it('creates draft issues and sets fields', async () => {
+    describe('execute with real issues', () => {
+      it('adds existing issues to project and sets fields', async () => {
         const plan = makePlan();
 
         // Mock getProjectFields
@@ -316,52 +304,35 @@ describe('GitHubProjectsBroker', () => {
           },
         });
 
-        // Mock createDraftIssue for story
+        // Mock addIssueToProject for story
         MockedGraphQLClient.prototype.query.mockResolvedValueOnce({
-          addProjectV2DraftIssue: { projectItem: { id: 'story-item-id' } },
+          addProjectV2ItemById: { item: { id: 'story-item-id' } },
         });
 
         // Mock updateType for story
         MockedGraphQLClient.prototype.query.mockResolvedValueOnce({
           updateProjectV2ItemFieldValue: { projectV2Item: { id: 'story-item-id' } },
         });
-        // Mock updatePriority for story
-        MockedGraphQLClient.prototype.query.mockResolvedValueOnce({
-          updateProjectV2ItemFieldValue: { projectV2Item: { id: 'story-item-id' } },
-        });
-        // Mock updateRisk for story
-        MockedGraphQLClient.prototype.query.mockResolvedValueOnce({
-          updateProjectV2ItemFieldValue: { projectV2Item: { id: 'story-item-id' } },
-        });
 
-        // Mock createDraftIssue for task
+        // Mock addIssueToProject for task
         MockedGraphQLClient.prototype.query.mockResolvedValueOnce({
-          addProjectV2DraftIssue: { projectItem: { id: 'task-item-id' } },
+          addProjectV2ItemById: { item: { id: 'task-item-id' } },
         });
         // Mock updateType for task
         MockedGraphQLClient.prototype.query.mockResolvedValueOnce({
           updateProjectV2ItemFieldValue: { projectV2Item: { id: 'task-item-id' } },
         });
-        // Mock updatePriority for task
-        MockedGraphQLClient.prototype.query.mockResolvedValueOnce({
-          updateProjectV2ItemFieldValue: { projectV2Item: { id: 'task-item-id' } },
-        });
-        // Mock updateStoryPoints for task
-        MockedGraphQLClient.prototype.query.mockResolvedValueOnce({
-          updateProjectV2ItemFieldValue: { projectV2Item: { id: 'task-item-id' } },
-        });
 
         const result = await broker.applyPlanToProject(plan, {
-          createAsDraftIssues: true,
           linkToMilestones: false,
           dryRun: false,
           idempotent: false,
-        });
+        }, { 'STORY-1': 'story-node-id', 'TS-1': 'task-node-id' });
 
         expect(result.success).toBe(true);
         expect(result.createdItems).toHaveLength(2);
         expect(result.createdItems[0].title).toBe('[STORY-1] First Story');
-        expect(result.createdItems[1].title).toBe('[TSK-1] Implement test');
+        expect(result.createdItems[1].title).toBe('[TS-1] Implement test');
         expect(result.message).toContain('Created 2 items');
       });
     });
@@ -395,7 +366,7 @@ describe('GitHubProjectsBroker', () => {
                 {
                   id: 'existing-task',
                   type: 'ISSUE',
-                  content: { id: 'i2', title: '[TSK-1] Implement test' },
+                  content: { id: 'i2', title: '[TS-1] Implement test' },
                   fieldValues: { nodes: [] },
                 },
               ],
@@ -404,11 +375,10 @@ describe('GitHubProjectsBroker', () => {
         });
 
         const result = await broker.applyPlanToProject(plan, {
-          createAsDraftIssues: true,
           linkToMilestones: false,
           dryRun: false,
           idempotent: true,
-        });
+        }, { 'STORY-1': 'story-node-id', 'TS-1': 'task-node-id' });
 
         expect(result.success).toBe(true);
         expect(result.createdItems).toHaveLength(0);
@@ -421,10 +391,11 @@ describe('GitHubProjectsBroker', () => {
       it('returns error when applying plan fails', async () => {
         const plan = makePlan();
 
-        MockedGraphQLClient.prototype.query.mockRejectedValueOnce(new Error('API Error'));
+        MockedGraphQLClient.prototype.query.mockImplementationOnce(async () => {
+          throw new Error('API Error');
+        });
 
         const result = await broker.applyPlanToProject(plan, {
-          createAsDraftIssues: true,
           linkToMilestones: false,
           dryRun: false,
           idempotent: false,
@@ -434,7 +405,7 @@ describe('GitHubProjectsBroker', () => {
         expect(result.error).toBe('API Error');
       });
 
-      it('throws when no node ID mapped and createAsDraftIssues=false', async () => {
+      it('throws when no node ID mapped', async () => {
         const plan = makePlan();
 
         MockedGraphQLClient.prototype.query.mockResolvedValueOnce({
@@ -446,7 +417,6 @@ describe('GitHubProjectsBroker', () => {
         });
 
         const result = await broker.applyPlanToProject(plan, {
-          createAsDraftIssues: false,
           linkToMilestones: false,
           dryRun: false,
           idempotent: false,

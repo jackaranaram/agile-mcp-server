@@ -48,10 +48,9 @@ class AgileHarnessServer {
         throw new Error('No authentication found. Provide GITHUB_TOKEN (PAT) or GitHub App credentials (GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, GITHUB_APP_INSTALLATION_ID).');
     }
 
-    private resolveRepository(args: Record<string, unknown> | undefined): string {
+    private resolveRepository(args: Record<string, unknown> | undefined): string | null {
         if (args?.repository) return args.repository as string;
-        if (process.env.GITHUB_REPOSITORY) return process.env.GITHUB_REPOSITORY;
-        return this.detectGitRemote() || '';
+        return this.detectGitRemote();
     }
 
     private detectGitRemote(): string | null {
@@ -126,7 +125,7 @@ class AgileHarnessServer {
                             },
                             repository: {
                                 type: "string",
-                                description: "Target repository in 'owner/repo' format (defaults to GITHUB_REPOSITORY environment variable)"
+                                description: "Target repository in 'owner/repo' format (auto-detected from git remote if omitted)"
                             },
                             dryRun: {
                                 type: "boolean",
@@ -141,7 +140,7 @@ class AgileHarnessServer {
                 } as Tool,
                 {
                     name: "init_agile_harness",
-                    description: "Verifies GitHub connectivity, ensures standard labels exist, and reports the initialization state of the Agile Harness for a repository.",
+                    description: "Verifies GitHub connectivity and reports the initialization state of the Agile Harness for a repository.",
                     inputSchema: {
                         type: "object",
                         properties: {
@@ -303,52 +302,6 @@ class AgileHarnessServer {
                     }
                 } as Tool,
                 {
-                    name: "apply_plan_to_project",
-                    description: "Applies the staged Agile Plan to a GitHub Project V2, creating draft issues (or adding existing issues) and setting custom fields (Type, Priority, Risk, Story Points).",
-                    inputSchema: {
-                        type: "object",
-                        properties: {
-                            projectId: {
-                                type: "string",
-                                description: "Node ID of the GitHub Project V2"
-                            },
-                            createAsDraftIssues: {
-                                type: "boolean",
-                                description: "If true, creates draft issues in the project. If false, adds existing issues by node ID (requires issueNodeIdMap). Defaults to true."
-                            },
-                            dryRun: {
-                                type: "boolean",
-                                description: "If true, simulates changes and returns a markdown report. Defaults to true."
-                            },
-                            idempotent: {
-                                type: "boolean",
-                                description: "If true, checks if items already exist before creating them. Defaults to false."
-                            },
-                            issueNodeIdMap: {
-                                type: "object",
-                                description: "Optional mapping of story/task IDs to GitHub node IDs (e.g. {\"STORY-1\": \"node_id_xxx\"}). Used when createAsDraftIssues=false to add existing issues to the project."
-                            },
-                            githubToken: {
-                                type: "string",
-                                description: "GitHub Personal Access Token (defaults to GITHUB_TOKEN env var)"
-                            },
-                            githubAppId: {
-                                type: "string",
-                                description: "GitHub App ID (defaults to GITHUB_APP_ID env var)"
-                            },
-                            githubAppPrivateKey: {
-                                type: "string",
-                                description: "GitHub App private key (defaults to GITHUB_APP_PRIVATE_KEY env var)"
-                            },
-                            githubAppInstallationId: {
-                                type: "string",
-                                description: "GitHub App installation ID (defaults to GITHUB_APP_INSTALLATION_ID env var)"
-                            }
-                        },
-                        required: ["projectId"]
-                    }
-                } as Tool,
-                {
                     name: "sync_project_with_milestones",
                     description: "Fetches items from a GitHub Project V2 and their associated milestones/issues for planning context.",
                     inputSchema: {
@@ -424,7 +377,7 @@ class AgileHarnessServer {
 
                     if (!repository) {
                         return {
-                            content: [{ type: "text", text: "Error: Repository is missing. Provide it via 'repository' argument, GITHUB_REPOSITORY env var, or be inside a git repository with a GitHub remote." }],
+                            content: [{ type: "text", text: "Error: Repository not found. Provide it via the 'repository' argument, or run this from a git repository with a GitHub remote." }],
                             isError: true,
                         };
                     }
@@ -466,12 +419,11 @@ class AgileHarnessServer {
                         const projectResult = await projectBroker.applyPlanToProject(
                             stagedPlan,
                             {
-                                createAsDraftIssues: Object.keys(issueNodeIdMap).length > 0 ? false : (stagedPlan.projectOptions?.createAsDraftIssues ?? true),
                                 linkToMilestones: stagedPlan.projectOptions?.linkToMilestones ?? false,
                                 dryRun: false,
                                 idempotent,
                             },
-                            Object.keys(issueNodeIdMap).length > 0 ? issueNodeIdMap : undefined,
+                            issueNodeIdMap,
                         );
                         responseText += `\n\n## GitHub Projects V2\n${projectResult.message}`;
                         if (!projectResult.success) {
@@ -498,7 +450,7 @@ class AgileHarnessServer {
 
                     if (!repository) {
                         return {
-                            content: [{ type: "text", text: "Error: Repository is missing. Provide it via 'repository' argument, GITHUB_REPOSITORY env var, or be inside a git repository with a GitHub remote." }],
+                            content: [{ type: "text", text: "Error: Repository not found. Provide it via the 'repository' argument, or run this from a git repository with a GitHub remote." }],
                             isError: true,
                         };
                     }
@@ -525,7 +477,7 @@ class AgileHarnessServer {
 
                     if (!repository) {
                         return {
-                            content: [{ type: "text", text: "Error: Repository is missing. Provide it via 'repository' argument, GITHUB_REPOSITORY env var, or be inside a git repository with a GitHub remote." }],
+                            content: [{ type: "text", text: "Error: Repository not found. Provide it via the 'repository' argument, or run this from a git repository with a GitHub remote." }],
                             isError: true,
                         };
                     }
@@ -589,7 +541,6 @@ class AgileHarnessServer {
                     const ownerLogin = (request.params.arguments?.ownerLogin as string) || this.detectGitOwnerLogin() || '';
                     const title = request.params.arguments?.title as string;
                     const isOrg = request.params.arguments?.isOrg === true;
-
                     if (!ownerLogin || !title) {
                         return {
                             content: [{ type: "text", text: `Error: 'title' is required.${!ownerLogin ? " 'ownerLogin' is required too — provide it or be inside a git repository with a GitHub remote." : ''}` }],
@@ -616,8 +567,51 @@ class AgileHarnessServer {
 
                     const project = await broker.createProject(owner.id, title);
 
+                    const manualInstructions = `\n\n---\n## Guía de configuración del Project\n\n` +
+                        `### 1. Campo Status — Flujo completo de 5 estados\n` +
+                        `El proyecto se crea con 3 estados por defecto: **Todo**, **In Progress**, **Done**. ` +
+                        `Para completar el flujo ágil, agrega **Backlog** e **In Review**:\n\n` +
+                        `**Paso a paso:**\n` +
+                        `   1. Abre el proyecto en tu navegador: \`https://github.com/users/${ownerLogin}/projects/${project.number}\`\n` +
+                        `   2. Haz clic en **"..."** → **Settings**\n` +
+                        `   3. Busca el campo **Status** → **Edit field**\n` +
+                        `   4. En **Options**, haz clic en **"Add option"** y agrega:\n\n` +
+                        `      | Opción        | Descripción                                            | Color |\n` +
+                        `      |--------------|--------------------------------------------------------|-------|\n` +
+                        `      | **Backlog**   | Unprioritized ideas and pending tasks                  | GRAY  |\n` +
+                        `      | **Todo**      | Prioritized tasks ready to start                       | BLUE  |\n` +
+                        `      | **In Progress** | Actively being worked on                             | YELLOW |\n` +
+                        `      | **In Review** | Completed tasks pending review / QA                     | PURPLE |\n` +
+                        `      | **Done**      | Finished and accepted tasks                            | GREEN |\n\n` +
+                        `   5. Ingresa la **descripción** para cada opción (opcional)\n` +
+                        `   6. Selecciona el **color** recomendado\n` +
+                        `   7. Haz clic en **"Save"**\n\n` +
+                        `> **💡 Tip:** Si ya tienes Todo, In Progress, Done — solo agrega **Backlog** al inicio e **In Review** entre medias.\n\n` +
+                        `### 2. Workflows de GitHub Projects (Automatización)\n` +
+                        `Ve a la pestaña **Workflows** → **"Add workflow"** y configura según los 5 estados:\n\n` +
+                        `   | Workflow                      | Trigger / Acción                            | Status objetivo |\n` +
+                        `   |------------------------------|---------------------------------------------|-----------------|\n` +
+                        `   | **Auto-add sub-issues**       | When a sub-issue is added                   | **Backlog**     |\n` +
+                        `   | **Auto-add to project**       | When an item matches rules                  | **Backlog**     |\n` +
+                        `   | **Item added to project**     | When any item is added                      | **Backlog**     |\n` +
+                        `   | **Code changes requested**    | When changes are requested on a PR          | **Todo**        |\n` +
+                        `   | **Item reopened**             | When a closed item is reopened              | **Todo**        |\n` +
+                        `   | **Pull request linked to issue** | When a PR links to an issue              | **In Review**   |\n` +
+                        `   | **Code review approved**      | When a review is approved                   | **Done**        |\n` +
+                        `   | **Pull request merged**       | When a PR is merged                         | **Done**        |\n` +
+                        `   | **Item closed**               | When an item is closed                      | **Done**        |\n` +
+                        `   | **Auto-close issue**          | When status is Done → close the issue       | *(cierra issue)* |\n` +
+                        `   | **Auto-archive items**        | When status is Done → archive the item      | *(archiva)*     |\n\n` +
+                        `### 3. Siguientes pasos — Aplicar un plan ágil\n` +
+                        `Ahora que el proyecto está listo, sigue este flujo:\n\n` +
+                        `   **Paso 1:** \`fetch_existing_epics\` — Revisa milestones e issues existentes para contexto\n` +
+                        `   **Paso 2:** \`stage_agile_plan\` — Crea y valida tu plan JSON (incluye \`targetProject\` con el ID de este proyecto para auto-sincronizar)\n` +
+                        `   **Paso 3:** \`apply_agile_plan\` — Publica en GitHub (crea milestones, issues y sincroniza con este proyecto)\n\n` +
+                        `   > Para que el plan sincronice campos (Type, Priority, Risk, Story Points), créalos manualmente en ` +
+                        `**Settings → Fields → + Add field**.`;
+
                     return {
-                        content: [{ type: "text", text: `Project created successfully!\n\n* **${project.title}** (#${project.number}) — ID: \`${project.id}\`\n* URL: \`${project.url || `https://github.com/users/${ownerLogin}/projects/${project.number}`}\`` }],
+                        content: [{ type: "text", text: `Project created successfully!\n\n* **${project.title}** (#${project.number}) — ID: \`${project.id}\`\n* URL: \`${project.url || `https://github.com/users/${ownerLogin}/projects/${project.number}`}\`${manualInstructions}` }],
                     };
                 } catch (error) {
                     const message = error instanceof Error ? error.message : String(error);
@@ -654,68 +648,6 @@ class AgileHarnessServer {
                     return {
                         content: [{ type: "text", text: `## Project Fields\n\n${text}` }],
                     };
-                } catch (error) {
-                    const message = error instanceof Error ? error.message : String(error);
-                    return {
-                        content: [{ type: "text", text: `Error: ${message}` }],
-                        isError: true,
-                    };
-                }
-            }
-
-            if (request.params.name === "apply_plan_to_project") {
-                const stagedPlan = await this.planner.getStagedPlan();
-                if (!stagedPlan) {
-                    return {
-                        content: [{ type: "text", text: "Error: No staged agile plan found. Run 'stage_agile_plan' first." }],
-                        isError: true,
-                    };
-                }
-
-                try {
-                    const auth = this.resolveAuth(request.params.arguments as Record<string, unknown> | undefined);
-                    const projectId = request.params.arguments?.projectId as string;
-
-                    if (!projectId) {
-                        return {
-                            content: [{ type: "text", text: "Error: 'projectId' argument is required." }],
-                            isError: true,
-                        };
-                    }
-
-                    const createAsDraftIssues = request.params.arguments?.createAsDraftIssues !== false;
-                    const dryRun = request.params.arguments?.dryRun !== false;
-                    const idempotent = request.params.arguments?.idempotent === true;
-                    const issueNodeIdMap = request.params.arguments?.issueNodeIdMap as Record<string, string> | undefined;
-
-                    const broker = new GitHubProjectsBroker(auth, projectId);
-                    const result = await broker.applyPlanToProject(
-                        stagedPlan,
-                        {
-                            createAsDraftIssues,
-                            linkToMilestones: false,
-                            dryRun,
-                            idempotent,
-                        },
-                        issueNodeIdMap,
-                    );
-
-                    if (result.success) {
-                        const responseText = dryRun
-                            ? `${result.message}\n\n${result.report}`
-                            : `${result.message}\n` +
-                              `Created ${result.createdItems.length} items.` +
-                              (result.reusedItems.length ? `\nReused ${result.reusedItems.length} existing items.` : '');
-
-                        return {
-                            content: [{ type: "text", text: responseText }],
-                        };
-                    } else {
-                        return {
-                            content: [{ type: "text", text: `Failed to apply plan to project: ${result.message}\nDetails: ${result.error || ''}` }],
-                            isError: true,
-                        };
-                    }
                 } catch (error) {
                     const message = error instanceof Error ? error.message : String(error);
                     return {

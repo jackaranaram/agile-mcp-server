@@ -26,6 +26,7 @@ export class GraphQLClient {
       headers: {
         'Content-Type': 'application/json',
         'X-Github-Next-Global-ID': '1',
+        'GraphQL-Features': 'sub_issues',
       },
     });
 

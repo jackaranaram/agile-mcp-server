@@ -257,6 +257,27 @@ export const ARCHIVE_ITEM = `
   }
 `;
 
+export const DELETE_PROJECT_ITEM = `
+  mutation DeleteProjectItem($projectId: ID!, $itemId: ID!) {
+    deleteProjectV2Item(input: { projectId: $projectId, itemId: $itemId }) {
+      deletedItemId
+    }
+  }
+`;
+
+export const APPLY_PROJECT_V2_TEMPLATE = `
+  mutation($projectId: ID!, $templateId: ID!) {
+    updateProjectV2(input: {
+      projectId: $projectId,
+      templateProjectId: $templateId
+    }) {
+      projectV2 {
+        id
+      }
+    }
+  }
+`;
+
 export const CONVERT_DRAFT_TO_ISSUE = `
   mutation ConvertDraftToIssue($itemId: ID!, $repositoryId: ID!) {
     convertProjectV2DraftIssueItemToIssue(input: { itemId: $itemId, repositoryId: $repositoryId }) {
@@ -285,6 +306,24 @@ export const GET_ORG_ID = `
   query GetOrgId($login: String!) {
     organization(login: $login) {
       id
+    }
+  }
+`;
+
+export const ADD_SUB_ISSUE = `
+  mutation AddSubIssue($issueId: ID!, $subIssueId: ID!) {
+    addSubIssue(input: {
+      issueId: $issueId,
+      subIssueId: $subIssueId
+    }) {
+      issue {
+        id
+        title
+      }
+      subIssue {
+        id
+        title
+      }
     }
   }
 `;

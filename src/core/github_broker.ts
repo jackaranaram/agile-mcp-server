@@ -3,19 +3,6 @@ import axiosRetry from 'axios-retry';
 import jwt from 'jsonwebtoken';
 import { AgilePlan, UserStory, TechnicalTask, AuthConfig, ExistingEpicInfo, GitHubMilestone, GitHubIssue, InitHarnessResult } from './types';
 
-const STANDARD_LABELS: Array<{ name: string; color: string }> = [
-  { name: 'type:epic', color: '3498DB' },
-  { name: 'type:story', color: '2ECC71' },
-  { name: 'type:task', color: '9B59B6' },
-  { name: 'priority:LOW', color: 'D4E6F1' },
-  { name: 'priority:MEDIUM', color: 'FADBD8' },
-  { name: 'priority:HIGH', color: 'F5B041' },
-  { name: 'priority:CRITICAL', color: 'EC7063' },
-  { name: 'risk:LOW', color: 'A9DFBF' },
-  { name: 'risk:MEDIUM', color: 'F9E79F' },
-  { name: 'risk:HIGH', color: 'F1948A' },
-];
-
 export interface ApplyPlanResult {
   success: boolean;
   message: string;
@@ -144,7 +131,7 @@ export class GitHubBroker {
     for (const ms of milestones) {
       const issues = await this.getExistingIssuesByMilestone(ms.number);
       const stories = issues
-        .filter(i => i.labels.some(l => l.name === 'type:story'))
+        .filter(i => !i.title.match(/^\[TS-/))
         .map(i => ({
           number: i.number,
           title: i.title,
@@ -179,13 +166,6 @@ export class GitHubBroker {
     return response.data;
   }
 
-  public async getExistingLabels(): Promise<Array<{ name: string; color: string }>> {
-    const response = await this.client.get(`/repos/${this.owner}/${this.repo}/labels`, {
-      params: { per_page: 100 },
-    });
-    return response.data;
-  }
-
   private async findMilestoneByTitle(title: string): Promise<{ number: number; url: string } | null> {
     const milestones = await this.getExistingMilestones('all');
     const found = milestones.find(ms => ms.title === title);
@@ -212,26 +192,18 @@ export class GitHubBroker {
       report += `* **Description:** ${epic.description}\n\n`;
     }
 
-    report += `## Labels to Create\n`;
-    const labels = this.collectRequiredLabels(plan);
-    labels.forEach(l => {
-      report += `* Label: \`${l.name}\` (Color: \`#${l.color}\`)\n`;
-    });
-    report += `\n`;
-
     report += `## User Stories\n`;
     epic.stories.forEach(story => {
       report += `### \`[${story.id}] ${story.title}\`\n`;
       report += `* **Description:** ${story.description}\n`;
       report += `* **Priority:** ${story.priority} | **Risk:** ${story.risk_level}\n`;
       report += `* **Tags:** ${story.tags.join(', ') || 'None'}\n`;
+      report += `* **Label:** \`enhancement\`\n`;
+      const totalEffort = story.tasks.reduce((sum, t) => sum + (t.story_points ?? 0), 0);
+      report += `* **Effort:** ${this.storyPointsToEffort(totalEffort)}\n`;
       report += `* **Acceptance Criteria:**\n`;
       story.acceptance_criteria.forEach(ac => {
         report += `  - [ ] ${ac}\n`;
-      });
-      report += `* **Technical Tasks:**\n`;
-      story.tasks.forEach(task => {
-        report += `  - [ ] \`[${task.id}] ${task.title}\` (Files: \`${task.target_files.join(', ') || 'None'}\`)\n`;
       });
       report += `\n`;
     });
@@ -245,11 +217,6 @@ export class GitHubBroker {
 
   private async executePlan(plan: AgilePlan, idempotent: boolean): Promise<ApplyPlanResult> {
     try {
-      const labels = this.collectRequiredLabels(plan);
-      for (const label of labels) {
-        await this.ensureLabelExists(label.name, label.color);
-      }
-
       let milestoneNumber: number;
       let milestoneUrl: string | undefined;
 
@@ -274,40 +241,32 @@ export class GitHubBroker {
         }
       }
 
-      const createdStories: Array<{ id: string; number: number; url: string; nodeId?: string; rawBody: string }> = [];
+      const createdStories: Array<{ id: string; number: number; url: string; nodeId?: string }> = [];
       const reusedStories: Array<{ id: string; number: number; url: string; nodeId?: string }> = [];
       const createdTasks: Array<{ id: string; number: number; url: string; nodeId?: string }> = [];
       const reusedTasks: Array<{ id: string; number: number; url: string; nodeId?: string }> = [];
       const taskToNumberMap: Record<string, number> = {};
 
       for (const story of plan.epic.stories) {
-        const storyLabels = [
-          'type:story',
-          `priority:${story.priority}`,
-          `risk:${story.risk_level}`,
-          ...story.tags,
-        ];
-
         const storyTitle = `[${story.id}] ${story.title}`;
 
         if (idempotent) {
           const existing = await this.findIssueByTitle(storyTitle, milestoneNumber);
           if (existing) {
             reusedStories.push({ id: story.id, number: existing.number, url: existing.url, nodeId: existing.nodeId });
-            createdStories.push({ id: story.id, number: existing.number, url: existing.url, nodeId: existing.nodeId, rawBody: '' });
+            createdStories.push({ id: story.id, number: existing.number, url: existing.url, nodeId: existing.nodeId });
             continue;
           }
         }
 
-        const initialBody = this.buildStoryBody(story);
         const { number, url, nodeId } = await this.createIssue(
           storyTitle,
-          initialBody,
+          this.buildStoryBody(story),
           milestoneNumber,
-          storyLabels
+          'enhancement'
         );
 
-        createdStories.push({ id: story.id, number, url, nodeId, rawBody: initialBody });
+        createdStories.push({ id: story.id, number, url, nodeId });
       }
 
       for (const story of plan.epic.stories) {
@@ -315,12 +274,6 @@ export class GitHubBroker {
         if (!parentStoryMeta) continue;
 
         for (const task of story.tasks) {
-          const taskLabels = [
-            'type:task',
-            `priority:${task.priority}`,
-            ...task.tags,
-          ];
-
           const taskTitle = `[${task.id}] ${task.title}`;
 
           if (idempotent) {
@@ -336,33 +289,23 @@ export class GitHubBroker {
           const { number, url, nodeId } = await this.createIssue(
             taskTitle,
             taskBody,
-            milestoneNumber,
-            taskLabels
+            milestoneNumber
           );
+
+          if (nodeId && parentStoryMeta.nodeId) {
+            try {
+              await this.addSubIssue(parentStoryMeta.nodeId, nodeId);
+            } catch (err) {
+              console.error(`Failed to link sub-issue: ${err instanceof Error ? err.message : String(err)}`);
+            }
+          }
 
           createdTasks.push({ id: task.id, number, url, nodeId });
           taskToNumberMap[task.id] = number;
         }
       }
 
-      for (const story of plan.epic.stories) {
-        const createdStory = createdStories.find(s => s.id === story.id);
-        if (!createdStory) continue;
-
-        const existingReused = reusedStories.find(s => s.id === story.id);
-        if (existingReused) continue;
-
-        const tasksListMarkdown = story.tasks.map(task => {
-          const taskNumber = taskToNumberMap[task.id];
-          if (!taskNumber) return '';
-          return `- [ ] #${taskNumber} [${task.id}] ${task.title}`;
-        }).filter(Boolean).join('\n');
-
-        if (tasksListMarkdown) {
-          const updatedBody = createdStory.rawBody.replace('<!-- TASKS_PLACEHOLDER -->', tasksListMarkdown);
-          await this.updateIssueBody(createdStory.number, updatedBody);
-        }
-      }
+      // Tasks are linked as sub-issues, no body update needed
 
       const parts: string[] = [`Plan successfully applied to ${this.owner}/${this.repo}.`];
       if (createdStories.length - reusedStories.length > 0) {
@@ -408,39 +351,23 @@ export class GitHubBroker {
     try {
       await this.client.get(`/repos/${this.owner}/${this.repo}`);
 
-      const existingLabels = await this.getExistingLabels();
-      const existingNames = new Set(existingLabels.map(l => l.name));
-
-      const labelsCreated: string[] = [];
-      for (const label of STANDARD_LABELS) {
-        if (!existingNames.has(label.name)) {
-          try {
-            await this.ensureLabelExists(label.name, label.color);
-            labelsCreated.push(label.name);
-          } catch {
-            // non-422 error, skip
-          }
-        }
-      }
-
       const milestones = await this.getExistingMilestones('open');
       const isInitialized = milestones.length > 0;
-      const totalLabels = existingLabels.length + labelsCreated.length;
 
       return {
         success: true,
         message: isInitialized
-          ? `Agile Harness is active. Found ${milestones.length} milestone(s) and ${totalLabels} labels.${labelsCreated.length ? ` Created ${labelsCreated.length} new label(s).` : ''}`
-          : `Repository initialized. Verified ${totalLabels} labels${labelsCreated.length ? ` (${labelsCreated.length} new)` : ''}. No milestones found. Create your first epic with stage_agile_plan + apply_agile_plan.`,
+          ? `Agile Harness is active. Found ${milestones.length} milestone(s).`
+          : `Repository connected. No milestones found. Create your first epic with stage_agile_plan + apply_agile_plan.`,
         isInitialized,
         milestonesCount: milestones.length,
-        labelsCount: totalLabels,
-        labelsCreated,
+        labelsCount: 0,
+        labelsCreated: [],
         repoExists: true,
         authValid: true,
       };
     } catch (error) {
-      const apiErr = error as import('axios').AxiosError;
+      const apiErr = error as AxiosError;
       let message = 'Failed to initialize Agile Harness.';
       let authValid = false;
       let repoExists = false;
@@ -473,45 +400,6 @@ export class GitHubBroker {
     }
   }
 
-  private collectRequiredLabels(plan: AgilePlan): Array<{ name: string; color: string }> {
-    const labelMap = new Map<string, string>();
-
-    STANDARD_LABELS.forEach(l => labelMap.set(l.name, l.color));
-
-    const collectTags = (tags: string[]) => {
-      tags.forEach(tag => {
-        if (!labelMap.has(tag)) {
-          labelMap.set(tag, 'D5D8DC');
-        }
-      });
-    };
-
-    collectTags(plan.epic.tags);
-    plan.epic.stories.forEach(story => {
-      collectTags(story.tags);
-      story.tasks.forEach(task => {
-        collectTags(task.tags);
-      });
-    });
-
-    return Array.from(labelMap.entries()).map(([name, color]) => ({ name, color }));
-  }
-
-  private async ensureLabelExists(name: string, color: string): Promise<void> {
-    try {
-      await this.client.post(`/repos/${this.owner}/${this.repo}/labels`, {
-        name,
-        color,
-        description: `Created by Agile Agent Harness`,
-      });
-    } catch (error) {
-      const apiError = error as AxiosError;
-      if (apiError.response?.status !== 422) {
-        throw error;
-      }
-    }
-  }
-
   private async createMilestone(title: string, description: string): Promise<number> {
     const response = await this.client.post(`/repos/${this.owner}/${this.repo}/milestones`, {
       title,
@@ -524,14 +412,17 @@ export class GitHubBroker {
     title: string,
     body: string,
     milestoneNumber: number,
-    labels: string[]
+    label?: string
   ): Promise<{ number: number; url: string; nodeId?: string }> {
-    const response = await this.client.post(`/repos/${this.owner}/${this.repo}/issues`, {
+    const payload: Record<string, unknown> = {
       title,
       body,
       milestone: milestoneNumber,
-      labels,
-    });
+    };
+    if (label) {
+      payload.labels = [label];
+    }
+    const response = await this.client.post(`/repos/${this.owner}/${this.repo}/issues`, payload);
     return {
       number: response.data.number as number,
       url: response.data.html_url as string,
@@ -539,13 +430,15 @@ export class GitHubBroker {
     };
   }
 
-  private async updateIssueBody(issueNumber: number, body: string): Promise<void> {
-    await this.client.patch(`/repos/${this.owner}/${this.repo}/issues/${issueNumber}`, {
-      body,
-    });
+  private storyPointsToEffort(sp: number | undefined): string {
+    if (sp === undefined) return 'Not set';
+    if (sp <= 2) return 'Low';
+    if (sp <= 5) return 'Medium';
+    return 'High';
   }
 
   private buildStoryBody(story: UserStory): string {
+    const totalEffort = story.tasks.reduce((sum, t) => sum + (t.story_points ?? 0), 0);
     return `### Description
 ${story.description}
 
@@ -556,9 +449,7 @@ ${story.acceptance_criteria.map(ac => `- [ ] ${ac}`).join('\n')}
 - **Priority:** ${story.priority}
 - **Risk Level:** ${story.risk_level}
 - **Tags:** ${story.tags.join(', ') || 'None'}
-
-### Technical Tasks
-<!-- TASKS_PLACEHOLDER -->`;
+- **Effort:** ${this.storyPointsToEffort(totalEffort)}`;
   }
 
   private buildTaskBody(task: TechnicalTask, parentStoryId: string, parentStoryUrl: string): string {
@@ -572,6 +463,29 @@ ${filesList || '- None'}
 ### Metadata
 - **Priority:** ${task.priority}
 - **Tags:** ${task.tags.join(', ') || 'None'}
+- **Effort:** ${this.storyPointsToEffort(task.story_points)}
 - **Parent User Story:** [${parentStoryId}](${parentStoryUrl})`;
+  }
+
+  private async addSubIssue(parentIssueId: string, subIssueId: string): Promise<void> {
+    const query = `
+      mutation AddSubIssue($issueId: ID!, $subIssueId: ID!) {
+        addSubIssue(input: { issueId: $issueId, subIssueId: $subIssueId }) {
+          issue { id }
+        }
+      }
+    `;
+    await this.client.post('/graphql', {
+      query,
+      variables: {
+        issueId: parentIssueId,
+        subIssueId: subIssueId,
+      },
+    }, {
+      headers: {
+        'Accept': 'application/json',
+        'GraphQL-Features': 'sub_issues',
+      }
+    });
   }
 }

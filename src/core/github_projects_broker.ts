@@ -5,16 +5,14 @@ import {
   GET_PROJECT_FIELDS,
   GET_PROJECT_ITEMS,
   CREATE_PROJECT,
-  CREATE_DRAFT_ISSUE,
   ADD_ITEM_TO_PROJECT,
   UPDATE_ITEM_FIELD_SINGLE_SELECT,
   UPDATE_ITEM_FIELD_NUMBER,
   CLEAR_ITEM_FIELD,
+  DELETE_PROJECT_ITEM,
   GET_NODE_ID,
   GET_USER_ID,
   GET_ORG_ID,
-  CREATE_PROJECT_FIELD,
-  ADD_PROJECT_FIELD_OPTION,
 } from './graphql_queries';
 import {
   AuthConfig,
@@ -24,7 +22,6 @@ import {
   ProjectInfo,
   ProjectField,
   ProjectItem,
-  CustomSingleSelectOption,
 } from './types';
 
 interface ListProjectsResponse {
@@ -72,10 +69,6 @@ interface GetProjectItemsResponse {
   } | null;
 }
 
-interface CreateDraftIssueResponse {
-  addProjectV2DraftIssue: { projectItem: { id: string } };
-}
-
 interface AddItemResponse {
   addProjectV2ItemById: { item: { id: string } };
 }
@@ -93,35 +86,15 @@ interface UpdateFieldResponse {
   updateProjectV2ItemFieldValue: { projectV2Item: { id: string } };
 }
 
+interface DeleteProjectItemResponse {
+  deleteProjectV2Item: { deletedItemId: string };
+}
+
 interface GetNodeIdResponse {
   repository: { id: string } | null;
 }
 
-interface CreateProjectFieldResponse {
-  createProjectV2Field: {
-    projectV2Field: {
-      id: string;
-      name: string;
-      options: Array<{ id: string; name: string; color: string }>;
-    };
-  };
-}
-
-interface AddProjectFieldOptionResponse {
-  addProjectV2SingleSelectFieldOption: {
-    field: {
-      id: string;
-      name: string;
-      options: Array<{ id: string; name: string; color: string }>;
-    };
-  };
-}
-
-
 const FIELD_NAME_MAP: Record<string, string> = {
-  priority: 'Priority',
-  risk_level: 'Risk',
-  story_points: 'Story Points',
   type: 'Type',
   status: 'Status',
 };
@@ -204,13 +177,6 @@ export class GitHubProjectsBroker {
     return items;
   }
 
-  async createDraftIssue(title: string, body?: string): Promise<string> {
-    const data = await this.graphql.query<CreateDraftIssueResponse>(CREATE_DRAFT_ISSUE, {
-      variables: { projectId: this.projectId, title, body: body ?? null },
-    });
-    return data.addProjectV2DraftIssue.projectItem.id;
-  }
-
   async addIssueToProject(issueNodeId: string): Promise<string> {
     const data = await this.graphql.query<AddItemResponse>(ADD_ITEM_TO_PROJECT, {
       variables: { projectId: this.projectId, contentId: issueNodeId },
@@ -233,6 +199,12 @@ export class GitHubProjectsBroker {
   async clearItemField(itemId: string, fieldId: string): Promise<void> {
     await this.graphql.query(CLEAR_ITEM_FIELD, {
       variables: { projectId: this.projectId, itemId, fieldId },
+    });
+  }
+
+  async deleteProjectItem(itemId: string): Promise<void> {
+    await this.graphql.query<DeleteProjectItemResponse>(DELETE_PROJECT_ITEM, {
+      variables: { projectId: this.projectId, itemId },
     });
   }
 
@@ -275,58 +247,6 @@ export class GitHubProjectsBroker {
     return data.createProjectV2.projectV2;
   }
 
-  async createCustomSingleSelectField(
-    projectId: string,
-    fieldName: string,
-    options: CustomSingleSelectOption[],
-  ): Promise<{ id: string; name: string; options: Array<{ id: string; name: string; color: string }> }> {
-    const formattedOptions = options.map((opt) => {
-      let color = opt.color.toUpperCase();
-      const validColors = ['GRAY', 'BLUE', 'GREEN', 'YELLOW', 'ORANGE', 'RED', 'PINK', 'PURPLE'];
-      if (!validColors.includes(color)) {
-        color = 'GRAY';
-      }
-      return {
-        name: opt.name,
-        color,
-        ...(opt.description ? { description: opt.description } : {}),
-      };
-    });
-
-    const data = await this.graphql.query<CreateProjectFieldResponse>(CREATE_PROJECT_FIELD, {
-      variables: {
-        projectId,
-        name: fieldName,
-        dataType: 'SINGLE_SELECT',
-        singleSelectOptions: formattedOptions,
-      },
-    });
-
-    return data.createProjectV2Field.projectV2Field;
-  }
-
-  async addProjectSingleSelectOption(
-    fieldId: string,
-    name: string,
-    color: string,
-  ): Promise<{ id: string; name: string; options: Array<{ id: string; name: string; color: string }> }> {
-    let formattedColor = color.toUpperCase();
-    const validColors = ['GRAY', 'BLUE', 'GREEN', 'YELLOW', 'ORANGE', 'RED', 'PINK', 'PURPLE'];
-    if (!validColors.includes(formattedColor)) {
-      formattedColor = 'GRAY';
-    }
-
-    const data = await this.graphql.query<AddProjectFieldOptionResponse>(ADD_PROJECT_FIELD_OPTION, {
-      variables: {
-        fieldId,
-        name,
-        color: formattedColor,
-      },
-    });
-
-    return data.addProjectV2SingleSelectFieldOption.field;
-  }
-
   async applyPlanToProject(
     plan: AgilePlan,
     options: ApplyToProjectOptions,
@@ -346,21 +266,11 @@ export class GitHubProjectsBroker {
       const reusedItems: Array<{ id: string; title: string }> = [];
 
       const typeField = fieldMap.get(FIELD_NAME_MAP.type);
-      const priorityField = fieldMap.get(FIELD_NAME_MAP.priority);
-      const riskField = fieldMap.get(FIELD_NAME_MAP.risk_level);
-      const storyPointsField = fieldMap.get(FIELD_NAME_MAP.story_points);
 
       const typeStoryOption = typeField?.options?.find(
         (o) => o.name.toLowerCase() === 'feature' || o.name.toLowerCase() === 'story'
       );
       const typeTaskOption = typeField?.options?.find((o) => o.name.toLowerCase() === 'task');
-
-      const priorityOptions = new Map(
-        (priorityField?.options ?? []).map((o) => [o.name.toUpperCase(), o.id]),
-      );
-      const riskOptions = new Map(
-        (riskField?.options ?? []).map((o) => [o.name.toUpperCase(), o.id]),
-      );
 
       for (const story of plan.epic.stories) {
         const storyTitle = `[${story.id}] ${story.title}`;
@@ -377,30 +287,16 @@ export class GitHubProjectsBroker {
         }
 
         if (!storyItemId) {
-          if (options.createAsDraftIssues) {
-            storyItemId = await this.createDraftIssue(storyTitle, story.description);
-          } else {
-            const nodeIssueId = issueNodeIdMap?.[story.id];
-            if (!nodeIssueId) {
-              throw new Error(`No node ID mapped for story ${story.id}. When createAsDraftIssues=false, issueNodeIdMap is required.`);
-            }
-            storyItemId = await this.addIssueToProject(nodeIssueId);
+          const nodeIssueId = issueNodeIdMap?.[story.id];
+          if (!nodeIssueId) {
+            throw new Error(`No node ID mapped for story ${story.id}. issueNodeIdMap is required.`);
           }
+          storyItemId = await this.addIssueToProject(nodeIssueId);
 
           createdItems.push({ id: storyItemId, title: storyTitle });
 
           if (typeStoryOption) {
             await this.updateItemFieldSingleSelect(storyItemId, typeField!.id, typeStoryOption.id);
-          }
-
-          const priorityOptionId = priorityOptions.get(story.priority);
-          if (priorityOptionId && priorityField) {
-            await this.updateItemFieldSingleSelect(storyItemId, priorityField.id, priorityOptionId);
-          }
-
-          const riskOptionId = riskOptions.get(story.risk_level);
-          if (riskOptionId && riskField) {
-            await this.updateItemFieldSingleSelect(storyItemId, riskField.id, riskOptionId);
           }
         }
 
@@ -417,30 +313,16 @@ export class GitHubProjectsBroker {
             }
           }
 
-          let taskItemId: string;
-          if (options.createAsDraftIssues) {
-            taskItemId = await this.createDraftIssue(taskTitle, task.description);
-          } else {
-            const nodeTaskId = issueNodeIdMap?.[task.id];
-            if (!nodeTaskId) {
-              throw new Error(`No node ID mapped for task ${task.id}. When createAsDraftIssues=false, issueNodeIdMap is required.`);
-            }
-            taskItemId = await this.addIssueToProject(nodeTaskId);
+          const nodeTaskId = issueNodeIdMap?.[task.id];
+          if (!nodeTaskId) {
+            throw new Error(`No node ID mapped for task ${task.id}. issueNodeIdMap is required.`);
           }
+          const taskItemId = await this.addIssueToProject(nodeTaskId);
 
           createdItems.push({ id: taskItemId, title: taskTitle });
 
           if (typeTaskOption) {
             await this.updateItemFieldSingleSelect(taskItemId, typeField!.id, typeTaskOption.id);
-          }
-
-          const taskPriorityOptionId = priorityOptions.get(task.priority.toUpperCase());
-          if (taskPriorityOptionId && priorityField) {
-            await this.updateItemFieldSingleSelect(taskItemId, priorityField.id, taskPriorityOptionId);
-          }
-
-          if (task.story_points !== undefined && storyPointsField) {
-            await this.updateItemFieldNumber(taskItemId, storyPointsField.id, task.story_points);
           }
         }
       }
@@ -478,13 +360,11 @@ export class GitHubProjectsBroker {
     report += `## User Stories\n`;
     for (const story of plan.epic.stories) {
       report += `### \`[${story.id}] ${story.title}\`\n`;
-      report += `* **Type:** Story\n`;
-      report += `* **Priority:** ${story.priority}\n`;
-      report += `* **Risk:** ${story.risk_level}\n`;
+      report += `* **Type:** Feature\n`;
       report += `* **Description:** ${story.description}\n`;
       report += `* **Tasks:**\n`;
       for (const task of story.tasks) {
-        report += `  - \`[${task.id}] ${task.title}\` (Priority: ${task.priority}, Story Points: ${task.story_points ?? 'N/A'})\n`;
+        report += `  - \`[${task.id}] ${task.title}\`\n`;
       }
       report += `\n`;
     }

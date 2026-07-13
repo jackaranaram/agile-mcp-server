@@ -1,0 +1,260 @@
+{
+  "version": "1.0",
+  "epic": {
+    "id": "EPIC-1",
+    "title": "GitHub REST API Integration",
+    "description": "Implement and maintain GitHub REST API integration for milestones, issues, and labels. Handles all CRUD operations with PAT and GitHub App authentication, rate limiting, retry logic, and idempotent execution.",
+    "priority": "HIGH",
+    "risk_level": "LOW",
+    "tags": [
+      "core",
+      "github",
+      "rest-api"
+    ],
+    "stories": [
+      {
+        "id": "US-1",
+        "title": "Milestones CRUD",
+        "description": "As a user, I want to create, find, and reuse GitHub milestones so that epics can be tracked as milestones",
+        "acceptance_criteria": [
+          "Create milestone via POST /repos/{owner}/{repo}/milestones",
+          "Find milestone by exact title match across all states",
+          "Reuse existing milestone when idempotent=true",
+          "Support targetMilestone to add stories to existing milestone"
+        ],
+        "priority": "HIGH",
+        "risk_level": "LOW",
+        "tags": [
+          "milestones"
+        ],
+        "tasks": [
+          {
+            "id": "TS-1",
+            "title": "Implement createMilestone",
+            "description": "POST to GitHub API to create milestone with title and description",
+            "target_files": [
+              "src/core/github_broker.ts"
+            ],
+            "story_points": 2,
+            "priority": "HIGH",
+            "tags": []
+          },
+          {
+            "id": "TS-2",
+            "title": "Implement findMilestoneByTitle",
+            "description": "Search milestones by exact title match across open/closed states",
+            "target_files": [
+              "src/core/github_broker.ts"
+            ],
+            "story_points": 3,
+            "priority": "HIGH",
+            "tags": []
+          },
+          {
+            "id": "TS-3",
+            "title": "Implement milestone reuse in executePlan",
+            "description": "When idempotent=true, find existing milestone by title and skip creation",
+            "target_files": [
+              "src/core/github_broker.ts"
+            ],
+            "story_points": 2,
+            "priority": "MEDIUM",
+            "tags": []
+          }
+        ]
+      },
+      {
+        "id": "US-2",
+        "title": "Issues CRUD (Stories & Tasks)",
+        "description": "As a user, I want to create story and task issues with structured bodies, labels, and milestone assignment",
+        "acceptance_criteria": [
+          "Create story issue with description, acceptance criteria, metadata table, and task placeholder",
+          "Create task issue with description, target files, and parent story link",
+          "Update story body with task checklist after tasks are created",
+          "Link tasks as sub-issues to parent stories via GraphQL addSubIssue mutation"
+        ],
+        "priority": "HIGH",
+        "risk_level": "LOW",
+        "tags": [
+          "issues"
+        ],
+        "tasks": [
+          {
+            "id": "TS-4",
+            "title": "Implement buildStoryBody",
+            "description": "Construct markdown body with description, AC, metadata table, and task placeholder comment",
+            "target_files": [
+              "src/core/github_broker.ts"
+            ],
+            "story_points": 3,
+            "priority": "HIGH",
+            "tags": []
+          },
+          {
+            "id": "TS-5",
+            "title": "Implement buildTaskBody",
+            "description": "Construct markdown body with description, affected files, metadata, and parent story link",
+            "target_files": [
+              "src/core/github_broker.ts"
+            ],
+            "story_points": 2,
+            "priority": "HIGH",
+            "tags": []
+          },
+          {
+            "id": "TS-6",
+            "title": "Implement createIssue with labels and milestones",
+            "description": "POST to GitHub API with title, body, milestone number, and label array",
+            "target_files": [
+              "src/core/github_broker.ts"
+            ],
+            "story_points": 2,
+            "priority": "HIGH",
+            "tags": []
+          },
+          {
+            "id": "TS-7",
+            "title": "Implement sub-issue linking via addSubIssue mutation",
+            "description": "GraphQL mutation to link task as sub-issue of story with custom headers",
+            "target_files": [
+              "src/core/github_broker.ts"
+            ],
+            "story_points": 3,
+            "priority": "MEDIUM",
+            "tags": []
+          },
+          {
+            "id": "TS-8",
+            "title": "Implement updateIssueBody for task checklist injection",
+            "description": "PATCH issue body to inject task checklist markdown after all tasks created",
+            "target_files": [
+              "src/core/github_broker.ts"
+            ],
+            "story_points": 2,
+            "priority": "MEDIUM",
+            "tags": []
+          }
+        ]
+      },
+      {
+        "id": "US-3",
+        "title": "Labels Management",
+        "description": "As a user, I want standard agile labels (type, priority, risk) to be automatically created and managed",
+        "acceptance_criteria": [
+          "Define 11 standard labels: type:epic/story/task, priority:LOW/MEDIUM/HIGH/CRITICAL, risk:LOW/MEDIUM/HIGH",
+          "Create missing labels automatically during plan execution",
+          "Skip label creation if already exists (ignore 422)",
+          "Collect and deduplicate custom tags from epic/stories/tasks"
+        ],
+        "priority": "HIGH",
+        "risk_level": "LOW",
+        "tags": [
+          "labels"
+        ],
+        "tasks": [
+          {
+            "id": "TS-9",
+            "title": "Define STANDARD_LABELS constant",
+            "description": "Array of 11 standard label objects with name, color, and description",
+            "target_files": [
+              "src/core/github_broker.ts"
+            ],
+            "story_points": 1,
+            "priority": "HIGH",
+            "tags": []
+          },
+          {
+            "id": "TS-10",
+            "title": "Implement ensureLabelExists",
+            "description": "POST label to GitHub API, ignore 409/422 if already exists",
+            "target_files": [
+              "src/core/github_broker.ts"
+            ],
+            "story_points": 2,
+            "priority": "HIGH",
+            "tags": []
+          },
+          {
+            "id": "TS-11",
+            "title": "Implement collectRequiredLabels with dedup",
+            "description": "Build unique set of labels from STANDARD_LABELS + custom tags, with skipMetadata option for label-only mode",
+            "target_files": [
+              "src/core/github_broker.ts"
+            ],
+            "story_points": 2,
+            "priority": "MEDIUM",
+            "tags": []
+          }
+        ]
+      },
+      {
+        "id": "US-4",
+        "title": "Plan Execution Engine",
+        "description": "As a user, I want the full plan execution pipeline with dry-run, idempotent mode, and proper error handling",
+        "acceptance_criteria": [
+          "Execute full pipeline: create labels → create milestone → create stories → create tasks → link sub-issues → update story bodies",
+          "Dry-run mode generates detailed markdown report without any API calls",
+          "Idempotent mode reuses existing milestones/stories/tasks by exact title match",
+          "Collect all created/reused items with nodeId for downstream Project V2 sync",
+          "Handle GitHub API errors gracefully with retry logic and exponential backoff"
+        ],
+        "priority": "CRITICAL",
+        "risk_level": "MEDIUM",
+        "tags": [
+          "execution",
+          "core"
+        ],
+        "tasks": [
+          {
+            "id": "TS-12",
+            "title": "Implement executePlan pipeline",
+            "description": "Orchestrate label creation, milestone creation, story/task creation, sub-issue linking, and body updates in correct order",
+            "target_files": [
+              "src/core/github_broker.ts"
+            ],
+            "story_points": 5,
+            "priority": "CRITICAL",
+            "tags": []
+          },
+          {
+            "id": "TS-13",
+            "title": "Implement generateDryRunReport",
+            "description": "Generate comprehensive markdown report with milestone, labels, stories, and tasks without API calls",
+            "target_files": [
+              "src/core/github_broker.ts"
+            ],
+            "story_points": 3,
+            "priority": "HIGH",
+            "tags": []
+          },
+          {
+            "id": "TS-14",
+            "title": "Implement idempotent story/task reuse",
+            "description": "Before creating each story/task, search by exact title within milestone and reuse if found",
+            "target_files": [
+              "src/core/github_broker.ts"
+            ],
+            "story_points": 3,
+            "priority": "MEDIUM",
+            "tags": []
+          },
+          {
+            "id": "TS-15",
+            "title": "Build ApplyPlanResult with created/reused item tracking",
+            "description": "Return structured result with milestoneUrl, createdStories, createdTasks, reusedStories, reusedTasks with nodeId for downstream sync",
+            "target_files": [
+              "src/core/github_broker.ts"
+            ],
+            "story_points": 2,
+            "priority": "MEDIUM",
+            "tags": []
+          }
+        ]
+      }
+    ]
+  },
+  "targetProject": "PVT_kwHOBjPLVc4BdOGv",
+  "projectOptions": {
+    "linkToMilestones": true
+  }
+}

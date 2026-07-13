@@ -257,6 +257,14 @@ export const ARCHIVE_ITEM = `
   }
 `;
 
+export const DELETE_PROJECT_ITEM = `
+  mutation DeleteProjectItem($projectId: ID!, $itemId: ID!) {
+    deleteProjectV2Item(input: { projectId: $projectId, itemId: $itemId }) {
+      deletedItemId
+    }
+  }
+`;
+
 export const APPLY_PROJECT_V2_TEMPLATE = `
   mutation($projectId: ID!, $templateId: ID!) {
     updateProjectV2(input: {
@@ -265,29 +273,6 @@ export const APPLY_PROJECT_V2_TEMPLATE = `
     }) {
       projectV2 {
         id
-      }
-    }
-  }
-`;
-
-export const CREATE_PROJECT_FIELD = `
-  mutation($projectId: ID!, $name: String!, $dataType: ProjectV2CustomFieldType!, $singleSelectOptions: [ProjectV2SingleSelectFieldOptionInput!]) {
-    createProjectV2Field(input: {
-      projectId: $projectId,
-      name: $name,
-      dataType: $dataType,
-      singleSelectOptions: $singleSelectOptions
-    }) {
-      projectV2Field {
-        ... on ProjectV2SingleSelectField {
-          id
-          name
-          options {
-            id
-            name
-            color
-          }
-        }
       }
     }
   }
@@ -321,28 +306,6 @@ export const GET_ORG_ID = `
   query GetOrgId($login: String!) {
     organization(login: $login) {
       id
-    }
-  }
-`;
-
-export const ADD_PROJECT_FIELD_OPTION = `
-  mutation AddProjectV2SingleSelectFieldOption($fieldId: ID!, $name: String!, $color: ProjectV2SingleSelectFieldOptionColor) {
-    addProjectV2SingleSelectFieldOption(input: {
-      fieldId: $fieldId,
-      name: $name,
-      color: $color
-    }) {
-      field {
-        ... on ProjectV2SingleSelectField {
-          id
-          name
-          options {
-            id
-            name
-            color
-          }
-        }
-      }
     }
   }
 `;

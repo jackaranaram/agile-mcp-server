@@ -115,7 +115,6 @@ describe('GitHubBroker', () => {
       expect(result.report).toContain('Simulation Report (Dry Run)');
       expect(result.report).toContain('[EPIC-1] Auth Integration');
       expect(result.report).toContain('[STORY-1] Implement Login');
-      expect(result.report).toContain('[TSK-1] Create POST /login');
 
       expect(mockPost).not.toHaveBeenCalled();
       expect(mockPatch).not.toHaveBeenCalled();
@@ -132,7 +131,7 @@ describe('GitHubBroker', () => {
   });
 
   describe('Execute Mode', () => {
-    it('should successfully call API to create milestone, issues, labels and update body', async () => {
+    it('should successfully call API to create milestone, issues, and update body', async () => {
       mockPost.mockImplementation(mockPostOk);
       mockPatch.mockResolvedValue({ data: {} });
 
@@ -145,10 +144,6 @@ describe('GitHubBroker', () => {
       expect(result.reusedStories).toBeUndefined();
       expect(result.reusedTasks).toBeUndefined();
 
-      expect(mockPost).toHaveBeenCalledWith(expect.stringContaining('/labels'), expect.objectContaining({ name: 'type:epic' }));
-      expect(mockPost).toHaveBeenCalledWith(expect.stringContaining('/labels'), expect.objectContaining({ name: 'priority:HIGH' }));
-      expect(mockPost).toHaveBeenCalledWith(expect.stringContaining('/labels'), expect.objectContaining({ name: 'security' }));
-
       expect(mockPost).toHaveBeenCalledWith(expect.stringContaining('/milestones'), {
         title: '[EPIC-1] Auth Integration',
         description: 'Setup authentication.'
@@ -156,19 +151,15 @@ describe('GitHubBroker', () => {
 
       expect(mockPost).toHaveBeenCalledWith(expect.stringContaining('/issues'), expect.objectContaining({
         title: '[STORY-1] Implement Login',
-        milestone: 42,
-        labels: expect.arrayContaining(['type:story', 'priority:HIGH', 'risk:LOW', 'frontend'])
+        milestone: 42
       }));
 
       expect(mockPost).toHaveBeenCalledWith(expect.stringContaining('/issues'), expect.objectContaining({
         title: '[TSK-1] Create POST /login',
-        milestone: 42,
-        labels: expect.arrayContaining(['type:task', 'priority:HIGH', 'backend'])
+        milestone: 42
       }));
 
-      expect(mockPatch).toHaveBeenCalledWith(expect.stringContaining('/issues/101'), expect.objectContaining({
-        body: expect.stringContaining('- [ ] #201 [TSK-1] Create POST /login')
-      }));
+      expect(mockPatch).not.toHaveBeenCalled();
     });
 
     it('should use targetMilestone when provided instead of creating one', async () => {
@@ -282,7 +273,7 @@ describe('GitHubBroker', () => {
             return Promise.resolve({
               data: [
                 { number: 10, title: '[STORY-1] Login', body: '', labels: [{ name: 'type:story' }], state: 'open', html_url: 'https://github.com/10' },
-                { number: 11, title: '[TSK-1] API', body: '', labels: [{ name: 'type:task' }], state: 'open', html_url: 'https://github.com/11' },
+                { number: 11, title: '[TS-1] API', body: '', labels: [{ name: 'type:task' }], state: 'open', html_url: 'https://github.com/11' },
               ]
             });
           }
@@ -307,9 +298,6 @@ describe('GitHubBroker', () => {
         if (url === '/repos/test-owner/test-repo') {
           return Promise.resolve({ status: 200, data: {} });
         }
-        if (url.includes('/labels')) {
-          return Promise.resolve({ data: [{ name: 'type:story', color: '2ECC71' }] });
-        }
         if (url.includes('/milestones')) {
           return Promise.resolve({ data: [] });
         }
@@ -321,7 +309,7 @@ describe('GitHubBroker', () => {
       expect(result.success).toBe(true);
       expect(result.isInitialized).toBe(false);
       expect(result.milestonesCount).toBe(0);
-      expect(result.labelsCreated.length).toBeGreaterThan(0);
+      expect(result.labelsCreated).toEqual([]);
       expect(result.repoExists).toBe(true);
       expect(result.authValid).toBe(true);
     });
@@ -330,9 +318,6 @@ describe('GitHubBroker', () => {
       mockGet.mockImplementation((url: string) => {
         if (url === '/repos/test-owner/test-repo') {
           return Promise.resolve({ status: 200, data: {} });
-        }
-        if (url.includes('/labels')) {
-          return Promise.resolve({ data: [] });
         }
         if (url.includes('/milestones')) {
           return Promise.resolve({ data: [{ number: 1, title: 'Sprint 1' }] });
@@ -345,7 +330,7 @@ describe('GitHubBroker', () => {
       expect(result.success).toBe(true);
       expect(result.isInitialized).toBe(true);
       expect(result.milestonesCount).toBe(1);
-      expect(result.labelsCreated.length).toBeGreaterThan(0);
+      expect(result.labelsCreated).toEqual([]);
     });
 
     it('should handle repo not found (404)', async () => {
@@ -377,27 +362,6 @@ describe('GitHubBroker', () => {
       expect(result.authValid).toBe(false);
     });
 
-    it('should not create labels that already exist', async () => {
-      const existingLabel = { name: 'type:story', color: '2ECC71' };
-      mockGet.mockImplementation((url: string) => {
-        if (url === '/repos/test-owner/test-repo') {
-          return Promise.resolve({ status: 200, data: {} });
-        }
-        if (url.includes('/labels')) {
-          return Promise.resolve({ data: [existingLabel] });
-        }
-        if (url.includes('/milestones')) {
-          return Promise.resolve({ data: [] });
-        }
-        return Promise.reject(new Error(`Unexpected get url: ${url}`));
-      });
-
-      const result = await broker.initializeHarness();
-
-      expect(result.success).toBe(true);
-      expect(result.labelsCreated).not.toContain('type:story');
-      expect(result.labelsCount).toBeGreaterThanOrEqual(1);
-    });
   });
 
   describe('GitHub App Authentication', () => {

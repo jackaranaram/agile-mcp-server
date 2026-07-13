@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const PrioritySchema = z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
+export const PrioritySchema = z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL", "URGENT"]);
 export const RiskLevelSchema = z.enum(["LOW", "MEDIUM", "HIGH"]);
 
 export const TechnicalTaskSchema = z.object({
@@ -14,7 +14,7 @@ export const TechnicalTaskSchema = z.object({
 });
 
 export const UserStorySchema = z.object({
-  id: z.string(),
+  id: z.string().describe("Unique identifier for the user story, e.g., US-1"),
   title: z.string(),
   description: z.string().describe("As a [role], I want [feature] so that [benefit]"),
   acceptance_criteria: z.array(z.string()).describe("List of testable criteria"),
@@ -40,7 +40,6 @@ export const AgilePlanSchema = z.object({
   targetMilestone: z.number().optional().describe("If set, stories will be added to this existing milestone instead of creating a new one"),
   targetProject: z.string().optional().describe("Node ID of an existing GitHub Project V2 to sync items into"),
   projectOptions: z.object({
-    createAsDraftIssues: z.boolean().default(true).describe("If true, creates draft issues directly in the project. If false, adds existing issues by node ID."),
     linkToMilestones: z.boolean().default(false).describe("If true, also creates milestones and issues (same as without targetProject) in addition to project items"),
   }).optional(),
 });
@@ -121,13 +120,6 @@ export interface ProjectFieldOption {
   name: string;
 }
 
-export interface CustomSingleSelectOption {
-  name: string;
-  color: string;
-  description?: string;
-}
-
-
 export interface ProjectField {
   id: string;
   name: string;
@@ -150,7 +142,6 @@ export interface ProjectItem {
 }
 
 export interface ApplyToProjectOptions {
-  createAsDraftIssues: boolean;
   linkToMilestones: boolean;
   dryRun: boolean;
   idempotent: boolean;

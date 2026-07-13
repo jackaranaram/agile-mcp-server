@@ -22,8 +22,12 @@ jobs:
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: npm pkg fix
+      - name: Extract OIDC auth token for npm
+        if: github.event_name == 'push'
+        run: TOKEN=$(grep -oP '(?<=//registry.npmjs.org/:_authToken=).*' "$HOME/.npmrc") && echo "NODE_AUTH_TOKEN=$TOKEN" >> "$GITHUB_ENV"
       - run: pnpm test
       - run: npx semantic-release
         if: github.event_name == 'push'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ env.NODE_AUTH_TOKEN }}

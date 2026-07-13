@@ -15,11 +15,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          registry-url: 'https://registry.npmjs.org'
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: npm pkg fix
       - run: pnpm test
       - run: npx semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "true"

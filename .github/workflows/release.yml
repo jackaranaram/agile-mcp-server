@@ -24,7 +24,7 @@ jobs:
       - run: npm pkg fix
       - name: Extract OIDC auth token for npm
         if: github.event_name == 'push'
-        run: TOKEN=$(grep -oP '(?<=//registry.npmjs.org/:_authToken=).*' "$HOME/.npmrc") && echo "NODE_AUTH_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+        run: TOKEN=$(grep -oP '(?<=//registry.npmjs.org/:_authToken=).*' "$NPM_CONFIG_USERCONFIG") && echo "NODE_AUTH_TOKEN=$TOKEN" >> "$GITHUB_ENV"
       - run: pnpm test
       - name: Semantic release (dry-run)
         if: github.event_name == 'pull_request'

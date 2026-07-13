@@ -1,3 +1,10 @@
+## [1.0.4](https://github.com/jackaranaram/agile-mcp-server/compare/v1.0.3...v1.0.4) (2026-07-13)
+
+
+### Bug Fixes
+
+* **ci:** use npm provenance for OIDC auth and fix bin warning ([#21](https://github.com/jackaranaram/agile-mcp-server/issues/21)) ([0fd6e92](https://github.com/jackaranaram/agile-mcp-server/commit/0fd6e922c004a663148c3e46a6ad2f38ffd062f1))
+
 ## [1.0.3](https://github.com/jackaranaram/agile-mcp-server/compare/v1.0.2...v1.0.3) (2026-07-13)
 
 

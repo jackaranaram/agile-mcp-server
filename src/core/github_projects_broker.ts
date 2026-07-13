@@ -14,6 +14,7 @@ import {
   GET_USER_ID,
   GET_ORG_ID,
   CREATE_PROJECT_FIELD,
+  ADD_PROJECT_FIELD_OPTION,
 } from './graphql_queries';
 import {
   AuthConfig,
@@ -99,6 +100,16 @@ interface GetNodeIdResponse {
 interface CreateProjectFieldResponse {
   createProjectV2Field: {
     projectV2Field: {
+      id: string;
+      name: string;
+      options: Array<{ id: string; name: string; color: string }>;
+    };
+  };
+}
+
+interface AddProjectFieldOptionResponse {
+  addProjectV2SingleSelectFieldOption: {
+    field: {
       id: string;
       name: string;
       options: Array<{ id: string; name: string; color: string }>;
@@ -278,6 +289,7 @@ export class GitHubProjectsBroker {
       return {
         name: opt.name,
         color,
+        ...(opt.description ? { description: opt.description } : {}),
       };
     });
 
@@ -285,13 +297,35 @@ export class GitHubProjectsBroker {
       variables: {
         projectId,
         name: fieldName,
-        options: formattedOptions,
+        dataType: 'SINGLE_SELECT',
+        singleSelectOptions: formattedOptions,
       },
     });
 
     return data.createProjectV2Field.projectV2Field;
   }
 
+  async addProjectSingleSelectOption(
+    fieldId: string,
+    name: string,
+    color: string,
+  ): Promise<{ id: string; name: string; options: Array<{ id: string; name: string; color: string }> }> {
+    let formattedColor = color.toUpperCase();
+    const validColors = ['GRAY', 'BLUE', 'GREEN', 'YELLOW', 'ORANGE', 'RED', 'PINK', 'PURPLE'];
+    if (!validColors.includes(formattedColor)) {
+      formattedColor = 'GRAY';
+    }
+
+    const data = await this.graphql.query<AddProjectFieldOptionResponse>(ADD_PROJECT_FIELD_OPTION, {
+      variables: {
+        fieldId,
+        name,
+        color: formattedColor,
+      },
+    });
+
+    return data.addProjectV2SingleSelectFieldOption.field;
+  }
 
   async applyPlanToProject(
     plan: AgilePlan,
@@ -316,7 +350,9 @@ export class GitHubProjectsBroker {
       const riskField = fieldMap.get(FIELD_NAME_MAP.risk_level);
       const storyPointsField = fieldMap.get(FIELD_NAME_MAP.story_points);
 
-      const typeStoryOption = typeField?.options?.find((o) => o.name.toLowerCase() === 'story');
+      const typeStoryOption = typeField?.options?.find(
+        (o) => o.name.toLowerCase() === 'feature' || o.name.toLowerCase() === 'story'
+      );
       const typeTaskOption = typeField?.options?.find((o) => o.name.toLowerCase() === 'task');
 
       const priorityOptions = new Map(

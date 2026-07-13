@@ -257,6 +257,42 @@ export const ARCHIVE_ITEM = `
   }
 `;
 
+export const APPLY_PROJECT_V2_TEMPLATE = `
+  mutation($projectId: ID!, $templateId: ID!) {
+    updateProjectV2(input: {
+      projectId: $projectId,
+      templateProjectId: $templateId
+    }) {
+      projectV2 {
+        id
+      }
+    }
+  }
+`;
+
+export const CREATE_PROJECT_FIELD = `
+  mutation($projectId: ID!, $name: String!, $dataType: ProjectV2CustomFieldType!, $singleSelectOptions: [ProjectV2SingleSelectFieldOptionInput!]) {
+    createProjectV2Field(input: {
+      projectId: $projectId,
+      name: $name,
+      dataType: $dataType,
+      singleSelectOptions: $singleSelectOptions
+    }) {
+      projectV2Field {
+        ... on ProjectV2SingleSelectField {
+          id
+          name
+          options {
+            id
+            name
+            color
+          }
+        }
+      }
+    }
+  }
+`;
+
 export const CONVERT_DRAFT_TO_ISSUE = `
   mutation ConvertDraftToIssue($itemId: ID!, $repositoryId: ID!) {
     convertProjectV2DraftIssueItemToIssue(input: { itemId: $itemId, repositoryId: $repositoryId }) {
@@ -289,15 +325,14 @@ export const GET_ORG_ID = `
   }
 `;
 
-export const CREATE_PROJECT_FIELD = `
-  mutation CreateProjectField($projectId: ID!, $name: String!, $options: [ProjectV2SingleSelectFieldOptionInput!]) {
-    createProjectV2Field(input: {
-      projectId: $projectId,
+export const ADD_PROJECT_FIELD_OPTION = `
+  mutation AddProjectV2SingleSelectFieldOption($fieldId: ID!, $name: String!, $color: ProjectV2SingleSelectFieldOptionColor) {
+    addProjectV2SingleSelectFieldOption(input: {
+      fieldId: $fieldId,
       name: $name,
-      dataType: SINGLE_SELECT,
-      singleSelectOptions: $options
+      color: $color
     }) {
-      projectV2Field {
+      field {
         ... on ProjectV2SingleSelectField {
           id
           name
@@ -312,3 +347,20 @@ export const CREATE_PROJECT_FIELD = `
   }
 `;
 
+export const ADD_SUB_ISSUE = `
+  mutation AddSubIssue($issueId: ID!, $subIssueId: ID!) {
+    addSubIssue(input: {
+      issueId: $issueId,
+      subIssueId: $subIssueId
+    }) {
+      issue {
+        id
+        title
+      }
+      subIssue {
+        id
+        title
+      }
+    }
+  }
+`;

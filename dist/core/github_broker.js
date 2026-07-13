@@ -202,7 +202,8 @@ class GitHubBroker {
     }
     async executePlan(plan, idempotent) {
         try {
-            const labels = this.collectRequiredLabels(plan);
+            const skipMetadata = !!plan.targetProject;
+            const labels = this.collectRequiredLabels(plan, skipMetadata);
             for (const label of labels) {
                 await this.ensureLabelExists(label.name, label.color);
             }
@@ -236,12 +237,14 @@ class GitHubBroker {
             const reusedTasks = [];
             const taskToNumberMap = {};
             for (const story of plan.epic.stories) {
-                const storyLabels = [
-                    'type:story',
-                    `priority:${story.priority}`,
-                    `risk:${story.risk_level}`,
-                    ...story.tags,
-                ];
+                const storyLabels = skipMetadata
+                    ? [...story.tags]
+                    : [
+                        'type:story',
+                        `priority:${story.priority}`,
+                        `risk:${story.risk_level}`,
+                        ...story.tags,
+                    ];
                 const storyTitle = `[${story.id}] ${story.title}`;
                 if (idempotent) {
                     const existing = await this.findIssueByTitle(storyTitle, milestoneNumber);
@@ -260,11 +263,13 @@ class GitHubBroker {
                 if (!parentStoryMeta)
                     continue;
                 for (const task of story.tasks) {
-                    const taskLabels = [
-                        'type:task',
-                        `priority:${task.priority}`,
-                        ...task.tags,
-                    ];
+                    const taskLabels = skipMetadata
+                        ? [...task.tags]
+                        : [
+                            'type:task',
+                            `priority:${task.priority}`,
+                            ...task.tags,
+                        ];
                     const taskTitle = `[${task.id}] ${task.title}`;
                     if (idempotent) {
                         const existing = await this.findIssueByTitle(taskTitle, milestoneNumber);
@@ -276,6 +281,14 @@ class GitHubBroker {
                     }
                     const taskBody = this.buildTaskBody(task, story.id, parentStoryMeta.url);
                     const { number, url, nodeId } = await this.createIssue(taskTitle, taskBody, milestoneNumber, taskLabels);
+                    if (nodeId && parentStoryMeta.nodeId) {
+                        try {
+                            await this.addSubIssue(parentStoryMeta.nodeId, nodeId);
+                        }
+                        catch (err) {
+                            console.error(`Failed to link sub-issue: ${err instanceof Error ? err.message : String(err)}`);
+                        }
+                    }
                     createdTasks.push({ id: task.id, number, url, nodeId });
                     taskToNumberMap[task.id] = number;
                 }
@@ -403,9 +416,18 @@ class GitHubBroker {
             };
         }
     }
-    collectRequiredLabels(plan) {
+    collectRequiredLabels(plan, skipMetadata = false) {
         const labelMap = new Map();
-        STANDARD_LABELS.forEach(l => labelMap.set(l.name, l.color));
+        STANDARD_LABELS.forEach(l => {
+            if (skipMetadata) {
+                if (l.name === 'type:epic') {
+                    labelMap.set(l.name, l.color);
+                }
+            }
+            else {
+                labelMap.set(l.name, l.color);
+            }
+        });
         const collectTags = (tags) => {
             tags.forEach(tag => {
                 if (!labelMap.has(tag)) {
@@ -489,6 +511,27 @@ ${filesList || '- None'}
 - **Priority:** ${task.priority}
 - **Tags:** ${task.tags.join(', ') || 'None'}
 - **Parent User Story:** [${parentStoryId}](${parentStoryUrl})`;
+    }
+    async addSubIssue(parentIssueId, subIssueId) {
+        const query = `
+      mutation AddSubIssue($issueId: ID!, $subIssueId: ID!) {
+        addSubIssue(input: { issueId: $issueId, subIssueId: $subIssueId }) {
+          issue { id }
+        }
+      }
+    `;
+        await this.client.post('/graphql', {
+            query,
+            variables: {
+                issueId: parentIssueId,
+                subIssueId: subIssueId,
+            },
+        }, {
+            headers: {
+                'Accept': 'application/json',
+                'GraphQL-Features': 'sub_issues',
+            }
+        });
     }
 }
 exports.GitHubBroker = GitHubBroker;

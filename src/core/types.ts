@@ -124,6 +124,7 @@ export interface ProjectFieldOption {
 export interface CustomSingleSelectOption {
   name: string;
   color: string;
+  description?: string;
 }
 
 

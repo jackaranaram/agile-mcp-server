@@ -319,7 +319,8 @@ describe('GitHubProjectsBroker', () => {
           variables: {
             projectId: 'project-123',
             name: 'Custom Status',
-            options: [
+            dataType: 'SINGLE_SELECT',
+            singleSelectOptions: [
               { name: 'Backlog', color: 'GRAY' },
               { name: 'Todo', color: 'GRAY' },
             ],

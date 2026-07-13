@@ -316,6 +316,48 @@ class AgileHarnessServer {
                     }
                 },
                 {
+                    name: "add_project_field_option",
+                    description: "Adds a new single-select option to an existing single-select field in a GitHub Project V2 (like adding a status option to the default Status field).",
+                    inputSchema: {
+                        type: "object",
+                        properties: {
+                            projectId: {
+                                type: "string",
+                                description: "Node ID of the GitHub Project V2"
+                            },
+                            fieldId: {
+                                type: "string",
+                                description: "Node ID of the single-select field to update"
+                            },
+                            name: {
+                                type: "string",
+                                description: "Name of the new option to add"
+                            },
+                            color: {
+                                type: "string",
+                                description: "Color of the option (GRAY, BLUE, GREEN, YELLOW, ORANGE, RED, PINK, PURPLE). Defaults to GRAY."
+                            },
+                            githubToken: {
+                                type: "string",
+                                description: "GitHub Personal Access Token (defaults to GITHUB_TOKEN env var)"
+                            },
+                            githubAppId: {
+                                type: "string",
+                                description: "GitHub App ID (defaults to GITHUB_APP_ID env var)"
+                            },
+                            githubAppPrivateKey: {
+                                type: "string",
+                                description: "GitHub App private key (defaults to GITHUB_APP_PRIVATE_KEY env var)"
+                            },
+                            githubAppInstallationId: {
+                                type: "string",
+                                description: "GitHub App installation ID (defaults to GITHUB_APP_INSTALLATION_ID env var)"
+                            }
+                        },
+                        required: ["projectId", "fieldId", "name"]
+                    }
+                },
+                {
                     name: "get_project_fields",
                     description: "Gets the custom fields (columns) available in a GitHub Project V2, including their IDs, types, and option values.",
                     inputSchema: {
@@ -673,6 +715,35 @@ class AgileHarnessServer {
                     const optionsText = field.options.map((o) => `${o.name} (ID: \`${o.id}\`, color: ${o.color})`).join(', ');
                     return {
                         content: [{ type: "text", text: `Custom single-select field '${field.name}' created successfully!\n\n* **Field ID:** \`${field.id}\`\n* **Options:** ${optionsText}` }],
+                    };
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    return {
+                        content: [{ type: "text", text: `Error: ${message}` }],
+                        isError: true,
+                    };
+                }
+            }
+            if (request.params.name === "add_project_field_option") {
+                try {
+                    const auth = this.resolveAuth(request.params.arguments);
+                    const projectId = request.params.arguments?.projectId;
+                    const fieldId = request.params.arguments?.fieldId;
+                    const name = request.params.arguments?.name;
+                    const color = request.params.arguments?.color || "GRAY";
+                    if (!projectId || !fieldId || !name) {
+                        return {
+                            content: [{ type: "text", text: "Error: 'projectId', 'fieldId', and 'name' are required." }],
+                            isError: true,
+                        };
+                    }
+                    const broker = new github_projects_broker_js_1.GitHubProjectsBroker(auth, projectId);
+                    const field = await broker.addProjectSingleSelectOption(fieldId, name, color);
+                    const option = field.options.find(o => o.name.toLowerCase() === name.toLowerCase());
+                    const optionText = option ? `${option.name} (ID: \`${option.id}\`, color: ${option.color})` : name;
+                    return {
+                        content: [{ type: "text", text: `Option added successfully to field '${field.name}'!\n\n* **Added Option:** ${optionText}` }],
                     };
                 }
                 catch (error) {

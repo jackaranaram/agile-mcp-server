@@ -245,7 +245,8 @@ export class GitHubBroker {
 
   private async executePlan(plan: AgilePlan, idempotent: boolean): Promise<ApplyPlanResult> {
     try {
-      const labels = this.collectRequiredLabels(plan);
+      const skipMetadata = !!plan.targetProject;
+      const labels = this.collectRequiredLabels(plan, skipMetadata);
       for (const label of labels) {
         await this.ensureLabelExists(label.name, label.color);
       }
@@ -281,12 +282,14 @@ export class GitHubBroker {
       const taskToNumberMap: Record<string, number> = {};
 
       for (const story of plan.epic.stories) {
-        const storyLabels = [
-          'type:story',
-          `priority:${story.priority}`,
-          `risk:${story.risk_level}`,
-          ...story.tags,
-        ];
+        const storyLabels = skipMetadata
+          ? [...story.tags]
+          : [
+              'type:story',
+              `priority:${story.priority}`,
+              `risk:${story.risk_level}`,
+              ...story.tags,
+            ];
 
         const storyTitle = `[${story.id}] ${story.title}`;
 
@@ -315,11 +318,13 @@ export class GitHubBroker {
         if (!parentStoryMeta) continue;
 
         for (const task of story.tasks) {
-          const taskLabels = [
-            'type:task',
-            `priority:${task.priority}`,
-            ...task.tags,
-          ];
+          const taskLabels = skipMetadata
+            ? [...task.tags]
+            : [
+                'type:task',
+                `priority:${task.priority}`,
+                ...task.tags,
+              ];
 
           const taskTitle = `[${task.id}] ${task.title}`;
 
@@ -339,6 +344,14 @@ export class GitHubBroker {
             milestoneNumber,
             taskLabels
           );
+
+          if (nodeId && parentStoryMeta.nodeId) {
+            try {
+              await this.addSubIssue(parentStoryMeta.nodeId, nodeId);
+            } catch (err) {
+              console.error(`Failed to link sub-issue: ${err instanceof Error ? err.message : String(err)}`);
+            }
+          }
 
           createdTasks.push({ id: task.id, number, url, nodeId });
           taskToNumberMap[task.id] = number;
@@ -473,10 +486,18 @@ export class GitHubBroker {
     }
   }
 
-  private collectRequiredLabels(plan: AgilePlan): Array<{ name: string; color: string }> {
+  private collectRequiredLabels(plan: AgilePlan, skipMetadata: boolean = false): Array<{ name: string; color: string }> {
     const labelMap = new Map<string, string>();
 
-    STANDARD_LABELS.forEach(l => labelMap.set(l.name, l.color));
+    STANDARD_LABELS.forEach(l => {
+      if (skipMetadata) {
+        if (l.name === 'type:epic') {
+          labelMap.set(l.name, l.color);
+        }
+      } else {
+        labelMap.set(l.name, l.color);
+      }
+    });
 
     const collectTags = (tags: string[]) => {
       tags.forEach(tag => {
@@ -573,5 +594,27 @@ ${filesList || '- None'}
 - **Priority:** ${task.priority}
 - **Tags:** ${task.tags.join(', ') || 'None'}
 - **Parent User Story:** [${parentStoryId}](${parentStoryUrl})`;
+  }
+
+  private async addSubIssue(parentIssueId: string, subIssueId: string): Promise<void> {
+    const query = `
+      mutation AddSubIssue($issueId: ID!, $subIssueId: ID!) {
+        addSubIssue(input: { issueId: $issueId, subIssueId: $subIssueId }) {
+          issue { id }
+        }
+      }
+    `;
+    await this.client.post('/graphql', {
+      query,
+      variables: {
+        issueId: parentIssueId,
+        subIssueId: subIssueId,
+      },
+    }, {
+      headers: {
+        'Accept': 'application/json',
+        'GraphQL-Features': 'sub_issues',
+      }
+    });
   }
 }
